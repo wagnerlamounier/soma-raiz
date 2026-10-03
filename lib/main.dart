@@ -94,7 +94,6 @@ class _GameScreenState extends State<GameScreen> {
   void _move(String direction) {
     bool moved = false;
 
-    // Rotações para padronizar a lógica de movimento para a esquerda
     int rotations = 0;
     if (direction == 'up') rotations = 3;
     if (direction == 'right') rotations = 2;
@@ -121,10 +120,9 @@ class _GameScreenState extends State<GameScreen> {
       }
 
       while (newRow.length < 4) {
-        newRow.add(null as CellData); // Preenchimento com nulos
+        newRow.add(null as CellData);
       }
 
-      // Verifica se houve alteração na linha
       for (int c = 0; c < 4; c++) {
         if (board[r][c]?.value != newRow[c]?.value || board[r][c]?.operation != newRow[c]?.operation) {
           moved = true;
@@ -133,7 +131,6 @@ class _GameScreenState extends State<GameScreen> {
       }
     }
 
-    // Desfaz as rotações
     for (int i = 0; i < (4 - rotations) % 4; i++) {
       _rotateBoardClockwise();
     }
@@ -164,140 +161,164 @@ class _GameScreenState extends State<GameScreen> {
         elevation: 0,
       ),
       body: SafeArea(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Painel de Pontuação
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF202024),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'PONTOS: $score',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF00B37E),
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            
-            // Tabuleiro com detecção de Gestos (Swipes)
-            GestureDetector(
-              onVerticalDragEnd: (details) {
-                if (details.velocity.pixelsPerSecond.dy < 0) {
-                  _move('up');
-                } else if (details.velocity.pixelsPerSecond.dy > 0) {
-                  _move('down');
-                }
-              },
-              onHorizontalDragEnd: (details) {
-                if (details.velocity.pixelsPerSecond.dx < 0) {
-                  _move('left');
-                } else if (details.velocity.pixelsPerSecond.dx > 0) {
-                  _move('right');
-                }
-              },
-              child: Container(
-                width: 340,
-                height: 340,
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF29292E),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: GridView.builder(
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                  ),
-                  itemCount: 16,
-                  itemBuilder: (context, index) {
-                    int r = index ~/ 4;
-                    int c = index % 4;
-                    CellData? cell = board[r][c];
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Calcula o tamanho ideal do tabuleiro com base na largura da tela do celular
+            double boardSize = constraints.maxWidth > 400 ? 380 : constraints.maxWidth * 0.9;
 
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: cell != null ? const Color(0xFF3C3C43) : const Color(0xFF323238),
-                        borderRadius: BorderRadius.circular(10),
-                        border: cell != null 
-                            ? Border.all(color: const Color(0xFF00B37E), width: 2) 
-                            : null,
-                      ),
-                      child: cell != null
-                          ? Stack(
-                              children: [
-                                // Indicador de Operação com Alta Visibilidade (Acessibilidade)
-                                Positioned(
-                                  top: 6,
-                                  left: 8,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: cell.operation == '+' ? Colors.green.shade800 : Colors.blue.shade800,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      cell.operation,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                // Valor Numérico Grande e Nítido
-                                Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 12.0),
-                                    child: Text(
-                                      '${cell.value}',
-                                      style: const TextStyle(
-                                        fontSize: 26,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          : const SizedBox.expand(),
-                    );
-                  },
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Painel de Pontuação
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF202024),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'PONTOS: $score',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF00B37E),
+                      letterSpacing: 1.2,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 30),
-            
-            // Botão de Reiniciar
-            ElevatedButton.icon(
-              onPressed: _initializeBoard,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reiniciar Jogo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00B37E),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-          ],
+                const SizedBox(height: 24),
+                
+                // Tabuleiro Responsivo com Detecção Sensível de Gestos
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanUpdate: (details) {
+                    // Evita disparos múltiplos muito rápidos no mesmo arrasto
+                  },
+                  onPanEnd: (details) {
+                    double dx = details.velocity.pixelsPerSecond.dx;
+                    double dy = details.velocity.pixelsPerSecond.dy;
+
+                    if (dx.abs() > dy.abs()) {
+                      if (dx > 50) {
+                        _move('right');
+                      } else if (dx < -50) {
+                        _move('left');
+                      }
+                    } else {
+                      if (dy > 50) {
+                        _move('down');
+                      } else if (dy < -50) {
+                        _move('up');
+                      }
+                    }
+                  },
+                  child: Container(
+                    width: boardSize,
+                    height: boardSize,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF29292E),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 4,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                      ),
+                      itemCount: 16,
+                      itemBuilder: (context, index) {
+                        int r = index ~/ 4;
+                        int c = index % 4;
+                        CellData? cell = board[r][c];
+
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: cell != null ? const Color(0xFF3C3C43) : const Color(0xFF323238),
+                            borderRadius: BorderRadius.circular(10),
+                            border: cell != null 
+                                ? Border.all(color: const Color(0xFF00B37E), width: 2) 
+                                : null,
+                          ),
+                          child: cell != null
+                              ? Stack(
+                                  children: [
+                                    // Operador com destaque visual nítido
+                                    Positioned(
+                                      top: 4,
+                                      left: 6,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: cell.operation == '+' ? Colors.green.shade800 : Colors.blue.shade800,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          cell.operation,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Valor numérico dimensionado para caber perfeitamente
+                                    Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(top: 10.0),
+                                        (cell.value.toString().length > 3)
+                                            ? Text(
+                                                '${cell.value}',
+                                                style: const TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : Text(
+                                                '${cell.value}',
+                                                style: const TextStyle(
+                                                  fontSize: 24,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : const SizedBox.expand(),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 30),
+                
+                // Botão de Reiniciar
+                ElevatedButton.icon(
+                  onPressed: _initializeBoard,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reiniciar Jogo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00B37E),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
