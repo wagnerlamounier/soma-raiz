@@ -19,6 +19,7 @@ jobs:
 
       - name: Clone Flutter SDK
         run: |
+          rm -rf _flutter
           git clone https://github.com/flutter/flutter.git -b stable --depth 1 _flutter
           echo "$GITHUB_WORKSPACE/_flutter/bin" >> $GITHUB_PATH
 
