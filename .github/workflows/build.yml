@@ -20,11 +20,15 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v3
         with:
-          flutter-version: '3.47.6'
+          flutter-version: '3.19.6'
           channel: 'stable'
+          cache: true
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Accept Android licenses
+        run: yes | flutter doctor --android-licenses || true
 
       - name: Build APK
         run: flutter build apk --release
