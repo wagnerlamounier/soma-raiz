@@ -46,9 +46,7 @@ class _GameScreenState extends State<GameScreen> {
   int score = 0;
   final Random random = Random();
 
-  // Variáveis para rastrear o deslize do dedo
-  Offset? _startPosition;
-  Offset? _endPosition;
+  Offset? _pointerDownPos;
 
   @override
   void initState() {
@@ -193,37 +191,32 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                     const SizedBox(height: 24),
                     
-                    // Tabuleiro Centralizado com Detecção Real de Deslize (Swipe)
+                    // Tabuleiro com Listener de Toque Direto (Cru)
                     Center(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onPanStart: (details) {
-                          _startPosition = details.globalPosition;
+                      child: Listener(
+                        onPointerDown: (event) {
+                          _pointerDownPos = event.position;
                         },
-                        onPanUpdate: (details) {
-                          _endPosition = details.globalPosition;
-                        },
-                        onPanEnd: (details) {
-                          if (_startPosition == null || _endPosition == null) return;
+                        onPointerUp: (event) {
+                          if (_pointerDownPos == null) return;
+                          
+                          Offset pointerUpPos = event.position;
+                          double dx = pointerUpPos.dx - _pointerDownPos!.dx;
+                          double dy = pointerUpPos.dy - _pointerDownPos!.dy;
+                          
+                          _pointerDownPos = null;
 
-                          double dx = _endPosition!.dx - _startPosition!.dx;
-                          double dy = _endPosition!.dy - _startPosition!.dy;
-
-                          // Limpa as posições
-                          _startPosition = null;
-                          _endPosition = null;
-
-                          // Define o limite mínimo de movimento (30 pixels) para considerar o gesto
+                          // Limite mínimo de 25 pixels para registrar o deslize
                           if (dx.abs() > dy.abs()) {
-                            if (dx > 30) {
+                            if (dx > 25) {
                               _move('right');
-                            } else if (dx < -30) {
+                            } else if (dx < -25) {
                               _move('left');
                             }
                           } else {
-                            if (dy > 30) {
+                            if (dy > 25) {
                               _move('down');
-                            } else if (dy < -30) {
+                            } else if (dy < -25) {
                               _move('up');
                             }
                           }
