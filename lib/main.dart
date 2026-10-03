@@ -163,7 +163,6 @@ class _GameScreenState extends State<GameScreen> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // Calcula o tamanho ideal do tabuleiro com base na largura da tela do celular
             double boardSize = constraints.maxWidth > 400 ? 380 : constraints.maxWidth * 0.9;
 
             return Column(
@@ -188,12 +187,9 @@ class _GameScreenState extends State<GameScreen> {
                 ),
                 const SizedBox(height: 24),
                 
-                // Tabuleiro Responsivo com Detecção Sensível de Gestos
+                // Tabuleiro Responsivo com Gestos de Toque
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onPanUpdate: (details) {
-                    // Evita disparos múltiplos muito rápidos no mesmo arrasto
-                  },
                   onPanEnd: (details) {
                     double dx = details.velocity.pixelsPerSecond.dx;
                     double dy = details.velocity.pixelsPerSecond.dy;
@@ -251,7 +247,6 @@ class _GameScreenState extends State<GameScreen> {
                           child: cell != null
                               ? Stack(
                                   children: [
-                                    // Operador com destaque visual nítido
                                     Positioned(
                                       top: 4,
                                       left: 6,
@@ -271,27 +266,17 @@ class _GameScreenState extends State<GameScreen> {
                                         ),
                                       ),
                                     ),
-                                    // Valor numérico dimensionado para caber perfeitamente
                                     Center(
                                       child: Padding(
                                         padding: const EdgeInsets.only(top: 10.0),
-                                        (cell.value.toString().length > 3)
-                                            ? Text(
-                                                '${cell.value}',
-                                                style: const TextStyle(
-                                                  fontSize: 20,
-                                                  fontWeight: FontWeight.w900,
-                                                  color: Colors.white,
-                                                ),
-                                              )
-                                            : Text(
-                                                '${cell.value}',
-                                                style: const TextStyle(
-                                                  fontSize: 24,
-                                                  fontWeight: FontWeight.w900,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
+                                        child: Text(
+                                          '${cell.value}',
+                                          style: TextStyle(
+                                            fontSize: cell.value.toString().length > 3 ? 20 : 24,
+                                            fontWeight: FontWeight.w900,
+                                            color: Colors.white,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ],
