@@ -12,12 +12,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: false
-          persist-credentials: false
-          fetch-depth: 1
+      - name: Download Repository Source
+        run: |
+          # Baixa o código do repositório atual em formato ZIP direto da API do GitHub e descompacta
+          curl -L -o repo.zip "https://api.github.com/repos/${{ github.repository }}/zipball/${{ github.ref_name }}"
+          mkdir -p project_source
+          unzip -q repo.zip -d project_source
+          # Move o conteúdo da pasta extraída (que tem um hash aleatório) para a raiz do workspace
+          cd project_source/*
+          shopt -s dotglob
+          mv * ../../
+          cd ../../
+          rm -rf repo.zip project_source
 
       - name: Set up Java
         uses: actions/setup-java@v5
