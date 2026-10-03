@@ -1,3 +1,4 @@
+
 name: Build Android APK
 
 on:
@@ -15,6 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          submodules: false
           persist-credentials: false
           fetch-depth: 1
 
