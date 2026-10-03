@@ -84,7 +84,6 @@ class _GameScreenState extends State<GameScreen> {
     int res = (a.operation == '+') ? (a.value + b.value) : (a.value * b.value);
     score += res;
     
-    // Mecânica de Colapso por Raiz Quadrada se passar de 99
     if (res > 99) {
       res = sqrt(res).round();
     }
@@ -165,143 +164,151 @@ class _GameScreenState extends State<GameScreen> {
           builder: (context, constraints) {
             double boardSize = constraints.maxWidth > 400 ? 380 : constraints.maxWidth * 0.9;
 
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Painel de Pontuação
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF202024),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    'PONTOS: $score',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF00B37E),
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                
-                // Tabuleiro Responsivo com Gestos de Toque
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onPanEnd: (details) {
-                    double dx = details.velocity.pixelsPerSecond.dx;
-                    double dy = details.velocity.pixelsPerSecond.dy;
-
-                    if (dx.abs() > dy.abs()) {
-                      if (dx > 50) {
-                        _move('right');
-                      } else if (dx < -50) {
-                        _move('left');
-                      }
-                    } else {
-                      if (dy > 50) {
-                        _move('down');
-                      } else if (dy < -50) {
-                        _move('up');
-                      }
-                    }
-                  },
-                  child: Container(
-                    width: boardSize,
-                    height: boardSize,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF29292E),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.4),
-                          blurRadius: 12,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: GridView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 4,
-                        crossAxisSpacing: 8,
-                        mainAxisSpacing: 8,
+            return Center(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Painel de Pontuação
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF202024),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      itemCount: 16,
-                      itemBuilder: (context, index) {
-                        int r = index ~/ 4;
-                        int c = index % 4;
-                        CellData? cell = board[r][c];
-
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: cell != null ? const Color(0xFF3C3C43) : const Color(0xFF323238),
-                            borderRadius: BorderRadius.circular(10),
-                            border: cell != null 
-                                ? Border.all(color: const Color(0xFF00B37E), width: 2) 
-                                : null,
-                          ),
-                          child: cell != null
-                              ? Stack(
-                                  children: [
-                                    Positioned(
-                                      top: 4,
-                                      left: 6,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: cell.operation == '+' ? Colors.green.shade800 : Colors.blue.shade800,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          cell.operation,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Center(
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(top: 10.0),
-                                        child: Text(
-                                          '${cell.value}',
-                                          style: TextStyle(
-                                            fontSize: cell.value.toString().length > 3 ? 20 : 24,
-                                            fontWeight: FontWeight.w900,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : const SizedBox.expand(),
-                        );
-                      },
+                      child: Text(
+                        'PONTOS: $score',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF00B37E),
+                          letterSpacing: 1.2,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 24),
+                    
+                    // Tabuleiro Centralizado com Gestos Sensíveis em Toda a Área
+                    Center(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onPanEnd: (details) {
+                          double dx = details.velocity.pixelsPerSecond.dx;
+                          double dy = details.velocity.pixelsPerSecond.dy;
+
+                          // Reduzimos o limiar para 25 para capturar gestos mais suaves
+                          if (dx.abs() > dy.abs()) {
+                            if (dx > 25) {
+                              _move('right');
+                            } else if (dx < -25) {
+                              _move('left');
+                            }
+                          } else {
+                            if (dy > 25) {
+                              _move('down');
+                            } else if (dy < -25) {
+                              _move('up');
+                            }
+                          }
+                        },
+                        child: Container(
+                          width: boardSize,
+                          height: boardSize,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF29292E),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.4),
+                                blurRadius: 12,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: GridView.builder(
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 4,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                            itemCount: 16,
+                            itemBuilder: (context, index) {
+                              int r = index ~/ 4;
+                              int c = index % 4;
+                              CellData? cell = board[r][c];
+
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: cell != null ? const Color(0xFF3C3C43) : const Color(0xFF323238),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: cell != null 
+                                      ? Border.all(color: const Color(0xFF00B37E), width: 2) 
+                                      : null,
+                                ),
+                                child: cell != null
+                                    ? Stack(
+                                        children: [
+                                          Positioned(
+                                            top: 4,
+                                            left: 6,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: cell.operation == '+' ? Colors.green.shade800 : Colors.blue.shade800,
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                cell.operation,
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          Center(
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(top: 10.0),
+                                              child: Text(
+                                                '${cell.value}',
+                                                style: TextStyle(
+                                                  fontSize: cell.value.toString().length > 3 ? 20 : 24,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : const SizedBox.expand(),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    
+                    // Botão de Reiniciar
+                    ElevatedButton.icon(
+                      onPressed: _initializeBoard,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Reiniciar Jogo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00B37E),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 30),
-                
-                // Botão de Reiniciar
-                ElevatedButton.icon(
-                  onPressed: _initializeBoard,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Reiniciar Jogo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00B37E),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ],
+              ),
             );
           },
         ),
