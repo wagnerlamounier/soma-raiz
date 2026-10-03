@@ -46,6 +46,10 @@ class _GameScreenState extends State<GameScreen> {
   int score = 0;
   final Random random = Random();
 
+  // Variáveis para rastrear o deslize do dedo
+  Offset? _startPosition;
+  Offset? _endPosition;
+
   @override
   void initState() {
     super.initState();
@@ -189,25 +193,37 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                     const SizedBox(height: 24),
                     
-                    // Tabuleiro Centralizado com Gestos Sensíveis em Toda a Área
+                    // Tabuleiro Centralizado com Detecção Real de Deslize (Swipe)
                     Center(
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
+                        onPanStart: (details) {
+                          _startPosition = details.globalPosition;
+                        },
+                        onPanUpdate: (details) {
+                          _endPosition = details.globalPosition;
+                        },
                         onPanEnd: (details) {
-                          double dx = details.velocity.pixelsPerSecond.dx;
-                          double dy = details.velocity.pixelsPerSecond.dy;
+                          if (_startPosition == null || _endPosition == null) return;
 
-                          // Reduzimos o limiar para 25 para capturar gestos mais suaves
+                          double dx = _endPosition!.dx - _startPosition!.dx;
+                          double dy = _endPosition!.dy - _startPosition!.dy;
+
+                          // Limpa as posições
+                          _startPosition = null;
+                          _endPosition = null;
+
+                          // Define o limite mínimo de movimento (30 pixels) para considerar o gesto
                           if (dx.abs() > dy.abs()) {
-                            if (dx > 25) {
+                            if (dx > 30) {
                               _move('right');
-                            } else if (dx < -25) {
+                            } else if (dx < -30) {
                               _move('left');
                             }
                           } else {
-                            if (dy > 25) {
+                            if (dy > 30) {
                               _move('down');
-                            } else if (dy < -25) {
+                            } else if (dy < -30) {
                               _move('up');
                             }
                           }
