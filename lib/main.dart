@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -28,11 +29,24 @@ class SomaRaizApp extends StatelessWidget {
   }
 }
 
+/// O que aconteceu com a peça na última jogada (usado para animar).
+enum TileEvent { none, spawned, merged, collapsed }
+
 class CellData {
+  static int _nextId = 0;
+
+  /// Identificador único: quando muda, a animação da célula é reiniciada.
+  final int id = _nextId++;
+
   int value;
   String operation; // '+' ou 'x'
+  TileEvent event;
 
-  CellData({required this.value, required this.operation});
+  CellData({
+    required this.value,
+    required this.operation,
+    this.event = TileEvent.none,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +159,7 @@ class HowToPlaySheet extends StatelessWidget {
                         'A partida termina quando o tabuleiro estiver cheio e '
                         'não houver mais nenhum movimento possível, ou seja, '
                         'nenhuma peça vizinha com o mesmo valor. Aí é só '
-                        'tocar em "Jogar novamente" e tentar superar o recorde.',
+                        'tocar em "Tentar Novamente" e superar o recorde.',
                   ),
                   SizedBox(height: 8),
                 ],
@@ -290,6 +304,223 @@ class _RuleCard extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// TELA DE FIM DE JOGO (OVERLAY)
+// ---------------------------------------------------------------------------
+
+class GameOverOverlay extends StatelessWidget {
+  final int score;
+  final int bestScore;
+  final bool isNewRecord;
+  final VoidCallback onRetry;
+
+  const GameOverOverlay({
+    super.key,
+    required this.score,
+    required this.bestScore,
+    required this.isNewRecord,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const Color green = Color(0xFF00B37E);
+
+    final Widget card = ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 340),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+        decoration: BoxDecoration(
+          color: const Color(0xFF202024),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: green, width: 2),
+          boxShadow: const [
+            BoxShadow(
+              color: Color.fromRGBO(0, 179, 126, 0.25),
+              blurRadius: 30,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Ícone de destaque
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                color: Color.fromRGBO(0, 179, 126, 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.flag_rounded, color: green, size: 34),
+            ),
+            const SizedBox(height: 16),
+
+            // Título
+            const Text(
+              'FIM DE JOGO',
+              style: TextStyle(
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Não há mais movimentos possíveis',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+
+            const SizedBox(height: 20),
+            const Divider(color: Color(0xFF323238), height: 1),
+            const SizedBox(height: 20),
+
+            // Pontuação final
+            const Text(
+              'PONTUAÇÃO FINAL',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+                letterSpacing: 1.4,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$score',
+              style: const TextStyle(
+                fontSize: 52,
+                fontWeight: FontWeight.w900,
+                color: green,
+                height: 1.1,
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            // Selo de novo recorde
+            if (isNewRecord) ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: green,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.emoji_events, color: Colors.white, size: 20),
+                    SizedBox(width: 6),
+                    Text(
+                      'NOVO RECORDE!',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
+
+            // Recorde pessoal
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF121214),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'RECORDE PESSOAL',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  Text(
+                    '$bestScore',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 22),
+
+            // Botão
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text(
+                  'Tentar Novamente',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: green,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return Material(
+      type: MaterialType.transparency,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+        child: card,
+        builder: (context, t, child) {
+          return Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: Color.fromRGBO(0, 0, 0, 0.8 * t),
+            alignment: Alignment.center,
+            child: SafeArea(
+              child: SingleChildScrollView(
+                child: Opacity(
+                  opacity: t,
+                  child: Transform.scale(
+                    scale: 0.9 + 0.1 * t,
+                    child: child,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // TELA DO JOGO
 // ---------------------------------------------------------------------------
 
@@ -306,11 +537,21 @@ class _GameScreenState extends State<GameScreen> {
   late List<List<CellData?>> board;
   int score = 0;
   int bestScore = 0;
+
+  // Recorde que existia quando a partida atual começou.
+  int _recordAtStart = 0;
+
   bool _gameOver = false;
   final Random random = Random();
 
+  // O que aconteceu na última jogada (usado para a vibração).
+  bool _mergedThisMove = false;
+  bool _collapsedThisMove = false;
+
   // Posição inicial do toque (usada pelo Listener)
   Offset? _pointerStart;
+
+  bool get _isNewRecord => score > 0 && score > _recordAtStart;
 
   @override
   void initState() {
@@ -324,7 +565,10 @@ class _GameScreenState extends State<GameScreen> {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getInt(_bestScoreKey) ?? 0;
       if (!mounted) return;
-      setState(() => bestScore = saved);
+      setState(() {
+        bestScore = saved;
+        _recordAtStart = saved;
+      });
     } catch (e) {
       debugPrint('Erro ao carregar recorde: $e');
     }
@@ -343,6 +587,7 @@ class _GameScreenState extends State<GameScreen> {
     board = List.generate(4, (_) => List<CellData?>.filled(4, null));
     score = 0;
     _gameOver = false;
+    _recordAtStart = bestScore;
     _addRandomTile();
     _addRandomTile();
   }
@@ -367,6 +612,7 @@ class _GameScreenState extends State<GameScreen> {
       board[pos.x][pos.y] = CellData(
         value: random.nextDouble() < 0.8 ? 2 : 4,
         operation: ops[random.nextInt(ops.length)],
+        event: TileEvent.spawned,
       );
     }
   }
@@ -375,15 +621,33 @@ class _GameScreenState extends State<GameScreen> {
     int res = (a.operation == '+') ? (a.value + b.value) : (a.value * b.value);
     score += res;
 
-    if (res > 99) {
+    final bool collapsed = res > 99;
+    if (collapsed) {
       res = sqrt(res).round();
     }
-    return CellData(value: res, operation: a.operation);
+
+    _mergedThisMove = true;
+    if (collapsed) _collapsedThisMove = true;
+
+    return CellData(
+      value: res,
+      operation: a.operation,
+      event: collapsed ? TileEvent.collapsed : TileEvent.merged,
+    );
   }
 
   /// Executa o movimento e retorna true se algo mudou no tabuleiro.
   bool _move(String direction) {
     bool moved = false;
+
+    // Zera os marcadores da jogada anterior.
+    _mergedThisMove = false;
+    _collapsedThisMove = false;
+    for (final List<CellData?> line in board) {
+      for (final CellData? cell in line) {
+        cell?.event = TileEvent.none;
+      }
+    }
 
     int rotations = 0;
     if (direction == 'up') rotations = 3;
@@ -457,6 +721,22 @@ class _GameScreenState extends State<GameScreen> {
     return true;
   }
 
+  /// Vibração: leve para um movimento, média para fusão,
+  /// e dois toques médios seguidos para um colapso (raiz quadrada).
+  void _playFeedback() {
+    if (_collapsedThisMove) {
+      HapticFeedback.mediumImpact();
+      Future.delayed(
+        const Duration(milliseconds: 90),
+        () => HapticFeedback.mediumImpact(),
+      );
+    } else if (_mergedThisMove) {
+      HapticFeedback.mediumImpact();
+    } else {
+      HapticFeedback.lightImpact();
+    }
+  }
+
   void _handleSwipe(double dx, double dy) {
     if (_gameOver) return;
 
@@ -483,13 +763,15 @@ class _GameScreenState extends State<GameScreen> {
       final bool moved = _move(direction);
       if (!moved) return;
 
-      final bool newRecord = score > bestScore;
+      _playFeedback();
+
+      final bool beatBest = score > bestScore;
       setState(() {
-        if (newRecord) bestScore = score;
+        if (beatBest) bestScore = score;
         if (_isGameOver()) _gameOver = true;
       });
 
-      if (newRecord) _saveBestScore();
+      if (beatBest) _saveBestScore();
     } catch (e, st) {
       debugPrint('Erro no movimento: $e\n$st');
     }
@@ -548,171 +830,178 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  Widget _buildCell(CellData? cell) {
+  Widget _buildEmptyCell() {
     return Container(
       decoration: BoxDecoration(
-        color: cell != null ? const Color(0xFF3C3C43) : const Color(0xFF323238),
+        color: const Color(0xFF323238),
         borderRadius: BorderRadius.circular(10),
-        border: cell != null
-            ? Border.all(color: const Color(0xFF00B37E), width: 2)
-            : null,
       ),
-      child: cell != null
-          ? Stack(
-              children: [
-                Positioned(
-                  top: 4,
-                  left: 6,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: cell.operation == '+'
-                          ? Colors.green.shade800
-                          : Colors.blue.shade800,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      cell.operation,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 10.0),
-                    child: Text(
-                      '${cell.value}',
-                      style: TextStyle(
-                        fontSize: cell.value.toString().length > 3 ? 20 : 24,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            )
-          : const SizedBox.expand(),
+      child: const SizedBox.expand(),
     );
   }
 
-  Widget _buildGameOverOverlay() {
-    return Positioned.fill(
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color.fromRGBO(0, 0, 0, 0.75),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'FIM DE JOGO',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: 1.5,
+  Widget _buildTileBody(CellData cell) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF3C3C43),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF00B37E), width: 2),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: 4,
+            left: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: cell.operation == '+'
+                    ? Colors.green.shade800
+                    : Colors.blue.shade800,
+                borderRadius: BorderRadius.circular(4),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Pontos: $score',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF00B37E),
-              ),
-            ),
-            if (score > 0 && score >= bestScore)
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Text(
-                  'Novo recorde!',
-                  style: TextStyle(fontSize: 16, color: Colors.amber),
+              child: Text(
+                cell.operation,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
               ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _restartGame,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00B37E),
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10.0),
+              child: Text(
+                '${cell.value}',
+                style: TextStyle(
+                  fontSize: cell.value.toString().length > 3 ? 20 : 24,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
                 ),
               ),
-              child: const Text(
-                'Jogar novamente',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+  }
+
+  /// Aplica um "pop" de escala. A chave com o id da peça faz a animação
+  /// reiniciar sempre que uma peça nova ocupa a posição.
+  Widget _buildPop(
+    CellData cell,
+    Widget child, {
+    required double begin,
+    required Duration duration,
+    required Curve curve,
+  }) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey<int>(cell.id),
+      tween: Tween<double>(begin: begin, end: 1.0),
+      duration: duration,
+      curve: curve,
+      child: child,
+      builder: (context, scale, child) {
+        return Transform.scale(scale: scale, child: child);
+      },
+    );
+  }
+
+  Widget _buildCell(CellData? cell) {
+    if (cell == null) return _buildEmptyCell();
+
+    final Widget tile = _buildTileBody(cell);
+
+    switch (cell.event) {
+      case TileEvent.spawned:
+        // Peça nova: cresce a partir do centro.
+        return _buildPop(
+          cell,
+          tile,
+          begin: 0.0,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutBack,
+        );
+      case TileEvent.merged:
+        // Fusão: leve "batida" elástica.
+        return _buildPop(
+          cell,
+          tile,
+          begin: 0.75,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.elasticOut,
+        );
+      case TileEvent.collapsed:
+        // Colapso: batida mais forte, para dar destaque.
+        return _buildPop(
+          cell,
+          tile,
+          begin: 0.4,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.elasticOut,
+        );
+      case TileEvent.none:
+        return tile;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Soma-Raiz',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            tooltip: 'Como jogar',
-            icon: const Icon(Icons.help_outline, size: 28),
-            color: const Color(0xFF00B37E),
-            onPressed: () => showHowToPlay(context),
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // Reserva espaço para pontuação, setas e botão de reiniciar
-            final double boardSize = max(
-              200.0,
-              min(
-                380.0,
-                min(constraints.maxWidth * 0.9, constraints.maxHeight - 260),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: const Text(
+              'Soma-Raiz',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
+            ),
+            centerTitle: true,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            actions: [
+              IconButton(
+                tooltip: 'Como jogar',
+                icon: const Icon(Icons.help_outline, size: 28),
+                color: const Color(0xFF00B37E),
+                onPressed: () => showHowToPlay(context),
               ),
-            );
+              const SizedBox(width: 4),
+            ],
+          ),
+          body: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Reserva espaço para pontuação, setas e botão de reiniciar
+                final double boardSize = max(
+                  200.0,
+                  min(
+                    380.0,
+                    min(constraints.maxWidth * 0.9,
+                        constraints.maxHeight - 260),
+                  ),
+                );
 
-            return Center(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Pontuação e recorde
-                    Row(
+                return Center(
+                  child: SingleChildScrollView(
+                    child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        _buildScoreBox('PONTOS', score),
-                        const SizedBox(width: 12),
-                        _buildScoreBox('RECORDE', bestScore),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
+                        // Pontuação e recorde
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildScoreBox('PONTOS', score),
+                            const SizedBox(width: 12),
+                            _buildScoreBox('RECORDE', bestScore),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
 
-                    // Tabuleiro com leitura direta dos toques (Listener)
-                    Stack(
-                      children: [
+                        // Tabuleiro com leitura direta dos toques (Listener)
                         Listener(
                           behavior: HitTestBehavior.opaque,
                           onPointerDown: (e) => _pointerStart = e.position,
@@ -758,52 +1047,60 @@ class _GameScreenState extends State<GameScreen> {
                             ),
                           ),
                         ),
-                        if (_gameOver) _buildGameOverOverlay(),
-                      ],
-                    ),
 
-                    const SizedBox(height: 16),
+                        const SizedBox(height: 16),
 
-                    // Botões de seta (alternativa ao deslize)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _buildArrowButton(Icons.arrow_back, -100, 0),
-                        _buildArrowButton(Icons.arrow_upward, 0, -100),
-                        _buildArrowButton(Icons.arrow_downward, 0, 100),
-                        _buildArrowButton(Icons.arrow_forward, 100, 0),
-                      ],
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Botão de reiniciar
-                    ElevatedButton.icon(
-                      onPressed: _restartGame,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text(
-                        'Reiniciar Jogo',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00B37E),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                        // Botões de seta (alternativa ao deslize)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildArrowButton(Icons.arrow_back, -100, 0),
+                            _buildArrowButton(Icons.arrow_upward, 0, -100),
+                            _buildArrowButton(Icons.arrow_downward, 0, 100),
+                            _buildArrowButton(Icons.arrow_forward, 100, 0),
+                          ],
                         ),
-                      ),
+
+                        const SizedBox(height: 16),
+
+                        // Botão de reiniciar
+                        ElevatedButton.icon(
+                          onPressed: _restartGame,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text(
+                            'Reiniciar Jogo',
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00B37E),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                  ],
-                ),
-              ),
-            );
-          },
+                  ),
+                );
+              },
+            ),
+          ),
         ),
-      ),
+
+        // Overlay de fim de jogo cobrindo a tela inteira
+        if (_gameOver)
+          GameOverOverlay(
+            score: score,
+            bestScore: bestScore,
+            isNewRecord: _isNewRecord,
+            onRetry: _restartGame,
+          ),
+      ],
     );
   }
 }
