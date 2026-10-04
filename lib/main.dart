@@ -35,6 +35,264 @@ class CellData {
   CellData({required this.value, required this.operation});
 }
 
+// ---------------------------------------------------------------------------
+// TELA DE INSTRUÇÕES (COMO JOGAR)
+// ---------------------------------------------------------------------------
+
+/// Abre o modal de instruções.
+void showHowToPlay(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => const HowToPlaySheet(),
+  );
+}
+
+class HowToPlaySheet extends StatelessWidget {
+  const HowToPlaySheet({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      heightFactor: 0.88,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF121214),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            // Alça visual do modal
+            const SizedBox(height: 12),
+            Container(
+              width: 44,
+              height: 5,
+              decoration: BoxDecoration(
+                color: const Color(0xFF323238),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Título
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.help_outline, color: Color(0xFF00B37E), size: 28),
+                SizedBox(width: 10),
+                Text(
+                  'Como Jogar',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Conteúdo rolável
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                children: const [
+                  _RuleCard(
+                    icon: Icons.swipe,
+                    accent: Color(0xFF00B37E),
+                    title: 'Objetivo',
+                    text:
+                        'Deslize o dedo sobre o tabuleiro 4x4 (ou use as setas) '
+                        'para mover todas as peças na mesma direção. Quando duas '
+                        'peças com o mesmo valor se encostam, elas se fundem em '
+                        'uma só. Combine o máximo que conseguir para fazer '
+                        'pontos e bater o seu recorde.',
+                  ),
+                  _RuleCard(
+                    icon: Icons.calculate_outlined,
+                    accent: Color(0xFF2E7D32),
+                    title: 'Operações: + e x',
+                    text:
+                        'Cada peça tem uma operação no canto superior. Ao fundir '
+                        'duas peças de mesmo valor, o resultado depende da '
+                        'operação da peça que está na frente, no sentido do '
+                        'movimento: se for "+", os valores são somados; se for '
+                        '"x", são multiplicados. A nova peça mantém essa '
+                        'operação.',
+                    example: '4 +  4  =  8          3 x 3  =  9',
+                    exampleNote: 'Só o valor precisa ser igual; as operações '
+                        'das duas peças podem ser diferentes.',
+                  ),
+                  _RuleCard(
+                    icon: Icons.functions,
+                    accent: Color(0xFF1565C0),
+                    title: 'Raiz Quadrada',
+                    text:
+                        'Se o resultado de uma fusão for maior que 99, o valor '
+                        'sofre um colapso e vira a sua raiz quadrada, '
+                        'arredondada. Isso mantém os números pequenos e o jogo '
+                        'em andamento. Os pontos da jogada contam o resultado '
+                        'antes do colapso.',
+                    example: '64 + 64 = 128   →   √128 ≈ 11',
+                  ),
+                  _RuleCard(
+                    icon: Icons.block,
+                    accent: Color(0xFFC62828),
+                    title: 'Fim de Jogo',
+                    text:
+                        'A partida termina quando o tabuleiro estiver cheio e '
+                        'não houver mais nenhum movimento possível, ou seja, '
+                        'nenhuma peça vizinha com o mesmo valor. Aí é só '
+                        'tocar em "Jogar novamente" e tentar superar o recorde.',
+                  ),
+                  SizedBox(height: 8),
+                ],
+              ),
+            ),
+
+            // Rodapé com o botão
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text(
+                      'Entendi / Voltar ao Jogo',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00B37E),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RuleCard extends StatelessWidget {
+  final IconData icon;
+  final Color accent;
+  final String title;
+  final String text;
+  final String? example;
+  final String? exampleNote;
+
+  const _RuleCard({
+    required this.icon,
+    required this.accent,
+    required this.title,
+    required this.text,
+    this.example,
+    this.exampleNote,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const Color cardColor = Color(0xFF202024);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF29292E)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Color.alphaBlend(accent.withAlpha(60), cardColor),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF00B37E),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 15,
+              height: 1.45,
+              color: Color(0xFFE1E1E6),
+            ),
+          ),
+          if (example != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF121214),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                example!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ],
+          if (exampleNote != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              exampleNote!,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TELA DO JOGO
+// ---------------------------------------------------------------------------
+
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
 
@@ -413,6 +671,15 @@ class _GameScreenState extends State<GameScreen> {
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Como jogar',
+            icon: const Icon(Icons.help_outline, size: 28),
+            color: const Color(0xFF00B37E),
+            onPressed: () => showHowToPlay(context),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: SafeArea(
         child: LayoutBuilder(
