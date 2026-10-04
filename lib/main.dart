@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const SomaRaizApp());
@@ -42,34 +43,54 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> {
+  static const String _bestScoreKey = 'best_score';
+
   late List<List<CellData?>> board;
   int score = 0;
+  int bestScore = 0;
+  bool _gameOver = false;
   final Random random = Random();
 
   // Posição inicial do toque (usada pelo Listener)
   Offset? _pointerStart;
 
-  // Texto de diagnóstico mostrado na tela (pode remover depois)
-  String _debugInfo = 'Aguardando gesto...';
-
   @override
   void initState() {
     super.initState();
     _resetBoard();
+    _loadBestScore();
+  }
+
+  Future<void> _loadBestScore() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getInt(_bestScoreKey) ?? 0;
+      if (!mounted) return;
+      setState(() => bestScore = saved);
+    } catch (e) {
+      debugPrint('Erro ao carregar recorde: $e');
+    }
+  }
+
+  Future<void> _saveBestScore() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_bestScoreKey, bestScore);
+    } catch (e) {
+      debugPrint('Erro ao salvar recorde: $e');
+    }
   }
 
   void _resetBoard() {
     board = List.generate(4, (_) => List<CellData?>.filled(4, null));
     score = 0;
+    _gameOver = false;
     _addRandomTile();
     _addRandomTile();
   }
 
   void _restartGame() {
-    setState(() {
-      _resetBoard();
-      _debugInfo = 'Jogo reiniciado';
-    });
+    setState(_resetBoard);
   }
 
   void _addRandomTile() {
@@ -102,7 +123,8 @@ class _GameScreenState extends State<GameScreen> {
     return CellData(value: res, operation: a.operation);
   }
 
-  void _move(String direction) {
+  /// Executa o movimento e retorna true se algo mudou no tabuleiro.
+  bool _move(String direction) {
     bool moved = false;
 
     int rotations = 0;
@@ -150,6 +172,7 @@ class _GameScreenState extends State<GameScreen> {
     if (moved) {
       _addRandomTile();
     }
+    return moved;
   }
 
   void _rotateBoardClockwise() {
@@ -163,39 +186,108 @@ class _GameScreenState extends State<GameScreen> {
     board = temp;
   }
 
+  /// Fim de jogo: tabuleiro cheio e nenhum par de vizinhos com o mesmo valor.
+  bool _isGameOver() {
+    for (int r = 0; r < 4; r++) {
+      for (int c = 0; c < 4; c++) {
+        final cell = board[r][c];
+        if (cell == null) return false;
+        if (c + 1 < 4 && board[r][c + 1]?.value == cell.value) return false;
+        if (r + 1 < 4 && board[r + 1][c]?.value == cell.value) return false;
+      }
+    }
+    return true;
+  }
+
   void _handleSwipe(double dx, double dy) {
+    if (_gameOver) return;
+
     const double minDistance = 30;
-    String direction = 'nenhuma (gesto curto)';
+    String? direction;
+
+    if (dx.abs() > dy.abs()) {
+      if (dx > minDistance) {
+        direction = 'right';
+      } else if (dx < -minDistance) {
+        direction = 'left';
+      }
+    } else {
+      if (dy > minDistance) {
+        direction = 'down';
+      } else if (dy < -minDistance) {
+        direction = 'up';
+      }
+    }
+
+    if (direction == null) return;
 
     try {
-      if (dx.abs() > dy.abs()) {
-        if (dx > minDistance) {
-          direction = 'right';
-          _move('right');
-        } else if (dx < -minDistance) {
-          direction = 'left';
-          _move('left');
-        }
-      } else {
-        if (dy > minDistance) {
-          direction = 'down';
-          _move('down');
-        } else if (dy < -minDistance) {
-          direction = 'up';
-          _move('up');
-        }
-      }
+      final bool moved = _move(direction);
+      if (!moved) return;
 
+      final bool newRecord = score > bestScore;
       setState(() {
-        _debugInfo =
-            'Gesto: $direction | dx=${dx.toStringAsFixed(0)} dy=${dy.toStringAsFixed(0)}';
+        if (newRecord) bestScore = score;
+        if (_isGameOver()) _gameOver = true;
       });
+
+      if (newRecord) _saveBestScore();
     } catch (e, st) {
       debugPrint('Erro no movimento: $e\n$st');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro: $e')),
-      );
     }
+  }
+
+  Widget _buildScoreBox(String label, int value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF202024),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '$value',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF00B37E),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildArrowButton(IconData icon, double dx, double dy) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: SizedBox(
+        width: 64,
+        height: 64,
+        child: IconButton(
+          onPressed: () => _handleSwipe(dx, dy),
+          icon: Icon(icon, size: 32),
+          style: IconButton.styleFrom(
+            backgroundColor: const Color(0xFF202024),
+            foregroundColor: const Color(0xFF00B37E),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildCell(CellData? cell) {
@@ -251,6 +343,65 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  Widget _buildGameOverOverlay() {
+    return Positioned.fill(
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color.fromRGBO(0, 0, 0, 0.75),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'FIM DE JOGO',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Pontos: $score',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF00B37E),
+              ),
+            ),
+            if (score > 0 && score >= bestScore)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  'Novo recorde!',
+                  style: TextStyle(fontSize: 16, color: Colors.amber),
+                ),
+              ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _restartGame,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00B37E),
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'Jogar novamente',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -266,117 +417,98 @@ class _GameScreenState extends State<GameScreen> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final double boardSize = min(
-              380.0,
-              min(constraints.maxWidth * 0.9, constraints.maxHeight * 0.55),
+            // Reserva espaço para pontuação, setas e botão de reiniciar
+            final double boardSize = max(
+              200.0,
+              min(
+                380.0,
+                min(constraints.maxWidth * 0.9, constraints.maxHeight - 260),
+              ),
             );
 
             return Center(
               child: SingleChildScrollView(
-                physics: const NeverScrollableScrollPhysics(),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // Painel de pontuação
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF202024),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'PONTOS: $score',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF00B37E),
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Tabuleiro com leitura direta dos toques (Listener)
-                    Listener(
-                      behavior: HitTestBehavior.opaque,
-                      onPointerDown: (e) => _pointerStart = e.position,
-                      onPointerUp: (e) {
-                        final start = _pointerStart;
-                        _pointerStart = null;
-                        if (start == null) return;
-                        final d = e.position - start;
-                        _handleSwipe(d.dx, d.dy);
-                      },
-                      onPointerCancel: (_) => _pointerStart = null,
-                      child: Container(
-                        width: boardSize,
-                        height: boardSize,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF29292E),
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color.fromRGBO(0, 0, 0, 0.4),
-                              blurRadius: 12,
-                              offset: Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: IgnorePointer(
-                          child: GridView.builder(
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 4,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                            ),
-                            itemCount: 16,
-                            itemBuilder: (context, index) {
-                              final int r = index ~/ 4;
-                              final int c = index % 4;
-                              return _buildCell(board[r][c]);
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    // Texto de diagnóstico (temporário)
-                    Text(
-                      _debugInfo,
-                      style: const TextStyle(fontSize: 13, color: Colors.grey),
-                    ),
-
-                    // Botões de seta para teste (temporários)
+                    // Pontuação e recorde
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        IconButton(
-                          onPressed: () => _handleSwipe(-100, 0),
-                          icon: const Icon(Icons.arrow_back),
+                        _buildScoreBox('PONTOS', score),
+                        const SizedBox(width: 12),
+                        _buildScoreBox('RECORDE', bestScore),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Tabuleiro com leitura direta dos toques (Listener)
+                    Stack(
+                      children: [
+                        Listener(
+                          behavior: HitTestBehavior.opaque,
+                          onPointerDown: (e) => _pointerStart = e.position,
+                          onPointerUp: (e) {
+                            final start = _pointerStart;
+                            _pointerStart = null;
+                            if (start == null) return;
+                            final d = e.position - start;
+                            _handleSwipe(d.dx, d.dy);
+                          },
+                          onPointerCancel: (_) => _pointerStart = null,
+                          child: Container(
+                            width: boardSize,
+                            height: boardSize,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF29292E),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color.fromRGBO(0, 0, 0, 0.4),
+                                  blurRadius: 12,
+                                  offset: Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: IgnorePointer(
+                              child: GridView.builder(
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 4,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                ),
+                                itemCount: 16,
+                                itemBuilder: (context, index) {
+                                  final int r = index ~/ 4;
+                                  final int c = index % 4;
+                                  return _buildCell(board[r][c]);
+                                },
+                              ),
+                            ),
+                          ),
                         ),
-                        IconButton(
-                          onPressed: () => _handleSwipe(0, -100),
-                          icon: const Icon(Icons.arrow_upward),
-                        ),
-                        IconButton(
-                          onPressed: () => _handleSwipe(0, 100),
-                          icon: const Icon(Icons.arrow_downward),
-                        ),
-                        IconButton(
-                          onPressed: () => _handleSwipe(100, 0),
-                          icon: const Icon(Icons.arrow_forward),
-                        ),
+                        if (_gameOver) _buildGameOverOverlay(),
                       ],
                     ),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
+
+                    // Botões de seta (alternativa ao deslize)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildArrowButton(Icons.arrow_back, -100, 0),
+                        _buildArrowButton(Icons.arrow_upward, 0, -100),
+                        _buildArrowButton(Icons.arrow_downward, 0, 100),
+                        _buildArrowButton(Icons.arrow_forward, 100, 0),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
 
                     // Botão de reiniciar
                     ElevatedButton.icon(
@@ -397,6 +529,7 @@ class _GameScreenState extends State<GameScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 12),
                   ],
                 ),
               ),
