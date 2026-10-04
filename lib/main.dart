@@ -29,6 +29,22 @@ class SomaRaizApp extends StatelessWidget {
   }
 }
 
+/// Modos de tabuleiro. Cada modo guarda o seu próprio recorde.
+/// O modo clássico usa a chave antiga ('best_score'), então o recorde
+/// que você já tem continua valendo.
+enum BoardMode {
+  compact(3, 'Compacto', '3x3', 'best_score_3x3'),
+  classic(4, 'Clássico', '4x4', 'best_score'),
+  expanded(5, 'Expandido', '5x5', 'best_score_5x5');
+
+  final int size;
+  final String label;
+  final String dims;
+  final String storageKey;
+
+  const BoardMode(this.size, this.label, this.dims, this.storageKey);
+}
+
 /// O que aconteceu com a peça na última jogada (usado para animar).
 enum TileEvent { none, spawned, merged, collapsed }
 
@@ -118,11 +134,21 @@ class HowToPlaySheet extends StatelessWidget {
                     accent: Color(0xFF00B37E),
                     title: 'Objetivo',
                     text:
-                        'Deslize o dedo sobre o tabuleiro 4x4 (ou use as setas) '
+                        'Deslize o dedo sobre o tabuleiro (ou use as setas) '
                         'para mover todas as peças na mesma direção. Quando duas '
                         'peças com o mesmo valor se encostam, elas se fundem em '
                         'uma só. Combine o máximo que conseguir para fazer '
                         'pontos e bater o seu recorde.',
+                  ),
+                  _RuleCard(
+                    icon: Icons.grid_view_rounded,
+                    accent: Color(0xFF6A1B9A),
+                    title: 'Modos de Tabuleiro',
+                    text:
+                        'Escolha o tamanho do desafio acima do tabuleiro. '
+                        'O 3x3 (Compacto) é rápido e apertado, o 4x4 (Clássico) '
+                        'é o equilibrado e o 5x5 (Expandido) dá mais espaço para '
+                        'planejar. Cada modo tem o seu próprio recorde.',
                   ),
                   _RuleCard(
                     icon: Icons.calculate_outlined,
@@ -311,6 +337,7 @@ class GameOverOverlay extends StatelessWidget {
   final int score;
   final int bestScore;
   final bool isNewRecord;
+  final String modeDims;
   final VoidCallback onRetry;
 
   const GameOverOverlay({
@@ -318,6 +345,7 @@ class GameOverOverlay extends StatelessWidget {
     required this.score,
     required this.bestScore,
     required this.isNewRecord,
+    required this.modeDims,
     required this.onRetry,
   });
 
@@ -430,7 +458,7 @@ class GameOverOverlay extends StatelessWidget {
               const SizedBox(height: 14),
             ],
 
-            // Recorde pessoal
+            // Recorde do modo atual
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -441,9 +469,9 @@ class GameOverOverlay extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'RECORDE PESSOAL',
-                    style: TextStyle(
+                  Text(
+                    'RECORDE · $modeDims',
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: Colors.grey,
@@ -532,7 +560,9 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> {
-  static const String _bestScoreKey = 'best_score';
+  // Modo de tabuleiro atual e o tamanho (n x n) derivado dele.
+  BoardMode _mode = BoardMode.classic;
+  int get n => _mode.size;
 
   late List<List<CellData?>> board;
   int score = 0;
@@ -561,10 +591,12 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _loadBestScore() async {
+    final BoardMode mode = _mode;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getInt(_bestScoreKey) ?? 0;
-      if (!mounted) return;
+      final saved = prefs.getInt(mode.storageKey) ?? 0;
+      // Se o jogador trocou de modo enquanto carregava, ignora.
+      if (!mounted || mode != _mode) return;
       setState(() {
         bestScore = saved;
         _recordAtStart = saved;
@@ -575,16 +607,18 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _saveBestScore() async {
+    final BoardMode mode = _mode;
+    final int value = bestScore;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_bestScoreKey, bestScore);
+      await prefs.setInt(mode.storageKey, value);
     } catch (e) {
       debugPrint('Erro ao salvar recorde: $e');
     }
   }
 
   void _resetBoard() {
-    board = List.generate(4, (_) => List<CellData?>.filled(4, null));
+    board = List.generate(n, (_) => List<CellData?>.filled(n, null));
     score = 0;
     _gameOver = false;
     _recordAtStart = bestScore;
@@ -596,10 +630,51 @@ class _GameScreenState extends State<GameScreen> {
     setState(_resetBoard);
   }
 
+  /// Troca o modo de tabuleiro. Se há partida em andamento, pede confirmação.
+  Future<void> _requestModeChange(BoardMode mode) async {
+    if (mode == _mode) return;
+
+    if (score > 0 && !_gameOver) {
+      final bool? ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF202024),
+          title: const Text('Trocar de modo?'),
+          content: Text(
+            'A partida atual será perdida ao mudar para '
+            '${mode.label} (${mode.dims}).',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text(
+                'Trocar',
+                style: TextStyle(color: Color(0xFF00B37E)),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _mode = mode;
+      bestScore = 0;
+      _resetBoard();
+    });
+    _loadBestScore();
+  }
+
   void _addRandomTile() {
     final List<Point<int>> emptyCells = [];
-    for (int r = 0; r < 4; r++) {
-      for (int c = 0; c < 4; c++) {
+    for (int r = 0; r < n; r++) {
+      for (int c = 0; c < n; c++) {
         if (board[r][c] == null) {
           emptyCells.add(Point(r, c));
         }
@@ -658,7 +733,7 @@ class _GameScreenState extends State<GameScreen> {
       _rotateBoardClockwise();
     }
 
-    for (int r = 0; r < 4; r++) {
+    for (int r = 0; r < n; r++) {
       final List<CellData> row = board[r].whereType<CellData>().toList();
       final List<CellData?> newRow = [];
 
@@ -674,11 +749,11 @@ class _GameScreenState extends State<GameScreen> {
         }
       }
 
-      while (newRow.length < 4) {
+      while (newRow.length < n) {
         newRow.add(null);
       }
 
-      for (int c = 0; c < 4; c++) {
+      for (int c = 0; c < n; c++) {
         if (board[r][c]?.value != newRow[c]?.value ||
             board[r][c]?.operation != newRow[c]?.operation) {
           moved = true;
@@ -687,6 +762,7 @@ class _GameScreenState extends State<GameScreen> {
       }
     }
 
+    // Quatro rotações completam a volta, independentemente do tamanho.
     for (int i = 0; i < (4 - rotations) % 4; i++) {
       _rotateBoardClockwise();
     }
@@ -699,10 +775,10 @@ class _GameScreenState extends State<GameScreen> {
 
   void _rotateBoardClockwise() {
     final List<List<CellData?>> temp =
-        List.generate(4, (_) => List<CellData?>.filled(4, null));
-    for (int r = 0; r < 4; r++) {
-      for (int c = 0; c < 4; c++) {
-        temp[c][3 - r] = board[r][c];
+        List.generate(n, (_) => List<CellData?>.filled(n, null));
+    for (int r = 0; r < n; r++) {
+      for (int c = 0; c < n; c++) {
+        temp[c][n - 1 - r] = board[r][c];
       }
     }
     board = temp;
@@ -710,12 +786,12 @@ class _GameScreenState extends State<GameScreen> {
 
   /// Fim de jogo: tabuleiro cheio e nenhum par de vizinhos com o mesmo valor.
   bool _isGameOver() {
-    for (int r = 0; r < 4; r++) {
-      for (int c = 0; c < 4; c++) {
+    for (int r = 0; r < n; r++) {
+      for (int c = 0; c < n; c++) {
         final cell = board[r][c];
         if (cell == null) return false;
-        if (c + 1 < 4 && board[r][c + 1]?.value == cell.value) return false;
-        if (r + 1 < 4 && board[r + 1][c]?.value == cell.value) return false;
+        if (c + 1 < n && board[r][c + 1]?.value == cell.value) return false;
+        if (r + 1 < n && board[r + 1][c]?.value == cell.value) return false;
       }
     }
     return true;
@@ -809,6 +885,43 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  Widget _buildModeSelector() {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (final BoardMode m in BoardMode.values)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: ChoiceChip(
+                  label: Text(m.dims),
+                  selected: m == _mode,
+                  showCheckmark: false,
+                  onSelected: (_) => _requestModeChange(m),
+                  backgroundColor: const Color(0xFF202024),
+                  selectedColor: const Color(0xFF00B37E),
+                  side: BorderSide.none,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  labelStyle: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: m == _mode ? Colors.white : Colors.grey,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Modo ${_mode.label}',
+          style: const TextStyle(fontSize: 13, color: Colors.grey),
+        ),
+      ],
+    );
+  }
+
   Widget _buildArrowButton(IconData icon, double dx, double dy) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -841,6 +954,9 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _buildTileBody(CellData cell) {
+    // Em tabuleiros maiores as peças são menores, então a fonte diminui.
+    final double fontSize = n >= 5 ? 20 : 24;
+
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF3C3C43),
@@ -872,13 +988,16 @@ class _GameScreenState extends State<GameScreen> {
           ),
           Center(
             child: Padding(
-              padding: const EdgeInsets.only(top: 10.0),
-              child: Text(
-                '${cell.value}',
-                style: TextStyle(
-                  fontSize: cell.value.toString().length > 3 ? 20 : 24,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
+              padding: const EdgeInsets.only(top: 10.0, left: 4, right: 4),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '${cell.value}',
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
@@ -916,7 +1035,6 @@ class _GameScreenState extends State<GameScreen> {
 
     switch (cell.event) {
       case TileEvent.spawned:
-        // Peça nova: cresce a partir do centro.
         return _buildPop(
           cell,
           tile,
@@ -925,7 +1043,6 @@ class _GameScreenState extends State<GameScreen> {
           curve: Curves.easeOutBack,
         );
       case TileEvent.merged:
-        // Fusão: leve "batida" elástica.
         return _buildPop(
           cell,
           tile,
@@ -934,7 +1051,6 @@ class _GameScreenState extends State<GameScreen> {
           curve: Curves.elasticOut,
         );
       case TileEvent.collapsed:
-        // Colapso: batida mais forte, para dar destaque.
         return _buildPop(
           cell,
           tile,
@@ -974,15 +1090,18 @@ class _GameScreenState extends State<GameScreen> {
           body: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                // Reserva espaço para pontuação, setas e botão de reiniciar
+                // Reserva espaço para pontuação, modos, setas e botão de reiniciar
                 final double boardSize = max(
                   200.0,
                   min(
                     380.0,
                     min(constraints.maxWidth * 0.9,
-                        constraints.maxHeight - 260),
+                        constraints.maxHeight - 330),
                   ),
                 );
+
+                // Espaçamento menor no 5x5 para as peças não ficarem minúsculas.
+                final double gap = n >= 5 ? 6 : 8;
 
                 return Center(
                   child: SingleChildScrollView(
@@ -990,7 +1109,7 @@ class _GameScreenState extends State<GameScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Pontuação e recorde
+                        // Pontuação e recorde (do modo atual)
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -999,7 +1118,11 @@ class _GameScreenState extends State<GameScreen> {
                             _buildScoreBox('RECORDE', bestScore),
                           ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
+
+                        // Seleção do modo de tabuleiro
+                        _buildModeSelector(),
+                        const SizedBox(height: 12),
 
                         // Tabuleiro com leitura direta dos toques (Listener)
                         Listener(
@@ -1032,15 +1155,15 @@ class _GameScreenState extends State<GameScreen> {
                               child: GridView.builder(
                                 physics: const NeverScrollableScrollPhysics(),
                                 gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 4,
-                                  crossAxisSpacing: 8,
-                                  mainAxisSpacing: 8,
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: n,
+                                  crossAxisSpacing: gap,
+                                  mainAxisSpacing: gap,
                                 ),
-                                itemCount: 16,
+                                itemCount: n * n,
                                 itemBuilder: (context, index) {
-                                  final int r = index ~/ 4;
-                                  final int c = index % 4;
+                                  final int r = index ~/ n;
+                                  final int c = index % n;
                                   return _buildCell(board[r][c]);
                                 },
                               ),
@@ -1098,6 +1221,7 @@ class _GameScreenState extends State<GameScreen> {
             score: score,
             bestScore: bestScore,
             isNewRecord: _isNewRecord,
+            modeDims: _mode.dims,
             onRetry: _restartGame,
           ),
       ],
