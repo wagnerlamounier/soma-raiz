@@ -39,6 +39,17 @@ const Color kCardColor = Color(0xFF202024);
 const Color kGreen = Color(0xFF00B37E);
 const Color kBoardColor = Color(0xFF29292E);
 const Color kEmptyCellColor = Color(0xFF323238);
+const Color kHammerColor = Color(0xFFF59E0B);
+
+// ---------------------------------------------------------------------------
+// ITENS
+// ---------------------------------------------------------------------------
+
+// Chave onde a quantidade de martelos fica salva no aparelho.
+const String kHammerStorageKey = 'item_hammer_count';
+
+// Quantidade inicial (valor de teste; a economia virá depois).
+const int kInitialHammers = 5;
 
 // ---------------------------------------------------------------------------
 // MODOS LIVRES
@@ -177,13 +188,17 @@ List<CampaignLevel> _createCampaignLevels() {
         world: 3,
         name: i == 30 ? 'O templo da raiz' : 'Caminho das raízes $i',
         boardSize: i <= 24 ? 4 : 3,
-        targetScore: 600 + ((i - 20) * 130),
+        targetScore: i == 26
+            ? 1200
+            : i == 27
+                ? 1300
+                : 600 + ((i - 20) * 130),
         targetValue: i == 24
             ? 11
             : i == 28
                 ? 36
                 : null,
-        maxMoves: i >= 26 ? 32 - (i - 26) : null,
+        maxMoves: i >= 26 ? 33 - (i - 26) : null,
         allowMultiplication: true,
         allowCollapse: true,
         allowMultiplesOfThree: i >= 25,
@@ -797,6 +812,16 @@ class HowToPlaySheet extends StatelessWidget {
                     example: '64 + 64 = 128 → √128 ≈ 11',
                   ),
                   _RuleCard(
+                    icon: Icons.gavel,
+                    accent: kHammerColor,
+                    title: 'Martelo',
+                    text:
+                        'Na campanha, toque no botão Martelo e depois em '
+                        'uma peça para destruí-la. Usar o martelo não conta '
+                        'como jogada e consome um item. Toque em Cancelar '
+                        'para desistir sem gastar.',
+                  ),
+                  _RuleCard(
                     icon: Icons.block,
                     accent: Color(0xFFC62828),
                     title: 'Fim de Jogo',
@@ -1293,6 +1318,10 @@ class _GameScreenState extends State<GameScreen> {
   int _campaignMoves = 0;
   int _campaignStars = 0;
 
+  // Item: martelo
+  int _hammers = 0;
+  bool _hammerActive = false;
+
   final Random random = Random();
   final CampaignProgress campaignProgress = CampaignProgress();
 
@@ -1313,6 +1342,7 @@ class _GameScreenState extends State<GameScreen> {
 
     if (isCampaign) {
       _loadCampaignProgress();
+      _loadHammers();
     } else {
       _loadBestScore();
     }
@@ -1323,6 +1353,32 @@ class _GameScreenState extends State<GameScreen> {
       await campaignProgress.load();
     } catch (e) {
       debugPrint('Erro ao carregar campanha: $e');
+    }
+  }
+
+  Future<void> _loadHammers() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final int saved = prefs.getInt(kHammerStorageKey) ?? kInitialHammers;
+
+      if (!mounted) return;
+
+      setState(() {
+        _hammers = saved;
+      });
+    } catch (e) {
+      debugPrint('Erro ao carregar martelos: $e');
+    }
+  }
+
+  Future<void> _saveHammers() async {
+    final int value = _hammers;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(kHammerStorageKey, value);
+    } catch (e) {
+      debugPrint('Erro ao salvar martelos: $e');
     }
   }
 
@@ -1367,6 +1423,7 @@ class _GameScreenState extends State<GameScreen> {
     _campaignWon = false;
     _campaignMoves = 0;
     _campaignStars = 0;
+    _hammerActive = false;
 
     _recordAtStart = bestScore;
 
@@ -1624,7 +1681,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _handleSwipe(double dx, double dy) {
-    if (_gameOver || _campaignWon) return;
+    if (_gameOver || _campaignWon || _hammerActive) return;
 
     const double minimumDistance = 30;
     String? direction;
@@ -1677,6 +1734,63 @@ class _GameScreenState extends State<GameScreen> {
       debugPrint('Erro no movimento: $e\n$st');
     }
   }
+
+  // -------------------------------------------------------------------------
+  // MARTELO
+  // -------------------------------------------------------------------------
+
+  void _toggleHammer() {
+    if (!isCampaign || _gameOver || _campaignWon) return;
+
+    if (!_hammerActive && _hammers <= 0) return;
+
+    HapticFeedback.selectionClick();
+
+    setState(() {
+      _hammerActive = !_hammerActive;
+    });
+  }
+
+  Future<void> _useHammerAt(
+    Offset local,
+    double boardSize,
+    double gap,
+  ) async {
+    if (!_hammerActive || _hammers <= 0) return;
+    if (_gameOver || _campaignWon) return;
+
+    // O tabuleiro tem 10 de espaço interno (3 de borda + 7 de padding).
+    const double pad = 10;
+
+    final double inner = boardSize - (pad * 2);
+    final double pitch = (inner + gap) / n;
+
+    final double x = local.dx - pad;
+    final double y = local.dy - pad;
+
+    if (x < 0 || y < 0 || x > inner || y > inner) return;
+
+    final int column = (x / pitch).floor();
+    final int row = (y / pitch).floor();
+
+    if (row < 0 || row >= n || column < 0 || column >= n) return;
+
+    if (board[row][column] == null) return;
+
+    HapticFeedback.heavyImpact();
+
+    setState(() {
+      board[row][column] = null;
+      _hammers--;
+      _hammerActive = false;
+    });
+
+    await _saveHammers();
+  }
+
+  // -------------------------------------------------------------------------
+  // STATUS DA CAMPANHA
+  // -------------------------------------------------------------------------
 
   void _checkCampaignStatus() {
     final CampaignLevel? level = campaignLevel;
@@ -1924,6 +2038,85 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  Widget _buildRestartButton() {
+    return ElevatedButton.icon(
+      onPressed: _restartGame,
+      icon: const Icon(Icons.refresh),
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          isCampaign ? 'Reiniciar Fase' : 'Reiniciar Jogo',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: kGreen,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHammerButton() {
+    final bool canUse =
+        !_gameOver && !_campaignWon && (_hammerActive || _hammers > 0);
+
+    return ElevatedButton.icon(
+      onPressed: canUse ? _toggleHammer : null,
+      icon: Icon(_hammerActive ? Icons.close : Icons.gavel),
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          _hammerActive ? 'Cancelar' : 'Martelo ($_hammers)',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _hammerActive ? kHammerColor : kCardColor,
+        foregroundColor: _hammerActive ? Colors.black : kHammerColor,
+        disabledBackgroundColor: kCardColor,
+        disabledForegroundColor: const Color(0xFF66666D),
+        side: const BorderSide(color: kHammerColor, width: 1.5),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomButtons() {
+    if (!isCampaign) {
+      return _buildRestartButton();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Expanded(child: _buildRestartButton()),
+          const SizedBox(width: 12),
+          Expanded(child: _buildHammerButton()),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmptyCell() {
     return Container(
       decoration: BoxDecoration(
@@ -1934,125 +2127,125 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Color _colorForValue(int value) {
-  // As cores têm transparência para deixar o tabuleiro aparecer
-  // levemente por baixo das peças.
-  const Map<int, Color> valueColors = {
-    2: Color.fromRGBO(66, 135, 245, 0.84),
-    3: Color.fromRGBO(0, 179, 126, 0.84),
-    4: Color.fromRGBO(132, 94, 247, 0.84),
-    5: Color.fromRGBO(214, 93, 160, 0.84),
-    6: Color.fromRGBO(230, 76, 60, 0.84),
-    8: Color.fromRGBO(245, 166, 35, 0.84),
-    9: Color.fromRGBO(20, 184, 166, 0.84),
-    11: Color.fromRGBO(239, 108, 0, 0.84),
-    12: Color.fromRGBO(67, 160, 71, 0.84),
-    16: Color.fromRGBO(156, 39, 176, 0.84),
-    18: Color.fromRGBO(3, 155, 229, 0.84),
-    24: Color.fromRGBO(198, 40, 40, 0.84),
-    25: Color.fromRGBO(121, 85, 72, 0.84),
-    32: Color.fromRGBO(63, 81, 181, 0.84),
-    36: Color.fromRGBO(0, 137, 123, 0.84),
-    48: Color.fromRGBO(173, 20, 87, 0.84),
-    64: Color.fromRGBO(230, 81, 0, 0.84),
-    81: Color.fromRGBO(46, 125, 50, 0.84),
-    128: Color.fromRGBO(81, 45, 168, 0.84),
-    256: Color.fromRGBO(0, 96, 100, 0.84),
-    512: Color.fromRGBO(183, 28, 28, 0.84),
-  };
+    // As cores têm transparência para deixar o tabuleiro aparecer
+    // levemente por baixo das peças.
+    const Map<int, Color> valueColors = {
+      2: Color.fromRGBO(66, 135, 245, 0.84),
+      3: Color.fromRGBO(0, 179, 126, 0.84),
+      4: Color.fromRGBO(132, 94, 247, 0.84),
+      5: Color.fromRGBO(214, 93, 160, 0.84),
+      6: Color.fromRGBO(230, 76, 60, 0.84),
+      8: Color.fromRGBO(245, 166, 35, 0.84),
+      9: Color.fromRGBO(20, 184, 166, 0.84),
+      11: Color.fromRGBO(239, 108, 0, 0.84),
+      12: Color.fromRGBO(67, 160, 71, 0.84),
+      16: Color.fromRGBO(156, 39, 176, 0.84),
+      18: Color.fromRGBO(3, 155, 229, 0.84),
+      24: Color.fromRGBO(198, 40, 40, 0.84),
+      25: Color.fromRGBO(121, 85, 72, 0.84),
+      32: Color.fromRGBO(63, 81, 181, 0.84),
+      36: Color.fromRGBO(0, 137, 123, 0.84),
+      48: Color.fromRGBO(173, 20, 87, 0.84),
+      64: Color.fromRGBO(230, 81, 0, 0.84),
+      81: Color.fromRGBO(46, 125, 50, 0.84),
+      128: Color.fromRGBO(81, 45, 168, 0.84),
+      256: Color.fromRGBO(0, 96, 100, 0.84),
+      512: Color.fromRGBO(183, 28, 28, 0.84),
+    };
 
-  final Color? knownColor = valueColors[value];
+    final Color? knownColor = valueColors[value];
 
-  if (knownColor != null) {
-    return knownColor;
+    if (knownColor != null) {
+      return knownColor;
+    }
+
+    // Para valores que ainda não estão na tabela, produz uma cor
+    // baseada no próprio número.
+    final double hue = (value * 47.0) % 360;
+
+    return HSVColor.fromAHSV(
+      0.84,
+      hue,
+      0.68,
+      0.86,
+    ).toColor();
   }
 
-  // Para valores que ainda não estão na tabela, produz uma cor
-  // baseada no próprio número, sem repetir exatamente uma cor fixa.
-  final double hue = (value * 47.0) % 360;
-
-  return HSVColor.fromAHSV(
-    0.84,
-    hue,
-    0.68,
-    0.86,
-  ).toColor();
-}
-
   Widget _buildTileBody(CellData cell) {
-  final double fontSize = n >= 5 ? 20 : 24;
+    final double fontSize = n >= 5 ? 20 : 24;
 
-  final Color tileColor = _colorForValue(cell.value);
+    final Color tileColor = _colorForValue(cell.value);
 
-  final Color borderColor = cell.showRoot
-      ? const Color.fromRGBO(255, 193, 7, 0.95)
-      : Colors.white.withAlpha(125);
+    final Color borderColor = cell.showRoot
+        ? const Color.fromRGBO(255, 193, 7, 0.95)
+        : Colors.white.withAlpha(125);
 
-  final String displayedOperation =
-      cell.showRoot ? '√${cell.operation}' : cell.operation;
+    final String displayedOperation =
+        cell.showRoot ? '√${cell.operation}' : cell.operation;
 
-  return Container(
-    decoration: BoxDecoration(
-      color: tileColor,
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(
-        color: borderColor,
-        width: cell.showRoot ? 3 : 1.5,
+    return Container(
+      decoration: BoxDecoration(
+        color: tileColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: borderColor,
+          width: cell.showRoot ? 3 : 1.5,
+        ),
       ),
-    ),
-    child: Stack(
-      children: [
-        Positioned(
-          top: 4,
-          left: 5,
-          right: 5,
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 6,
-              vertical: 3,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.black.withAlpha(105),
-              borderRadius: BorderRadius.circular(5),
-            ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                displayedOperation,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  height: 1,
+      child: Stack(
+        children: [
+          Positioned(
+            top: 4,
+            left: 5,
+            right: 5,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 3,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.black.withAlpha(105),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  displayedOperation,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    height: 1,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.only(
-              top: 14,
-              left: 4,
-              right: 4,
-            ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                '${cell.value}',
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(
+                top: 14,
+                left: 4,
+                right: 4,
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '${cell.value}',
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
 
   Widget _buildPop(
     CellData cell,
@@ -2158,7 +2351,7 @@ class _GameScreenState extends State<GameScreen> {
           body: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final double reservedHeight = isCampaign ? 360 : 330;
+                final double reservedHeight = isCampaign ? 370 : 330;
 
                 final double boardSize = max(
                   200,
@@ -2212,6 +2405,18 @@ class _GameScreenState extends State<GameScreen> {
                             final Offset distance =
                                 event.position - start;
 
+                            // Com o martelo ativo, um toque escolhe a peça.
+                            if (_hammerActive) {
+                              if (distance.distance < 15) {
+                                _useHammerAt(
+                                  event.localPosition,
+                                  boardSize,
+                                  gap,
+                                );
+                              }
+                              return;
+                            }
+
                             _handleSwipe(
                               distance.dx,
                               distance.dy,
@@ -2223,10 +2428,17 @@ class _GameScreenState extends State<GameScreen> {
                           child: Container(
                             width: boardSize,
                             height: boardSize,
-                            padding: const EdgeInsets.all(10),
+                            // 3 de borda + 7 de padding = 10 de espaço interno.
+                            padding: const EdgeInsets.all(7),
                             decoration: BoxDecoration(
                               color: kBoardColor,
                               borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: _hammerActive
+                                    ? kHammerColor
+                                    : Colors.transparent,
+                                width: 3,
+                              ),
                               boxShadow: const [
                                 BoxShadow(
                                   color: Color.fromRGBO(0, 0, 0, 0.4),
@@ -2258,7 +2470,21 @@ class _GameScreenState extends State<GameScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: isCampaign ? 30 : 16,
+                          child: isCampaign && _hammerActive
+                              ? const Center(
+                                  child: Text(
+                                    'Toque em uma peça para destruí-la',
+                                    style: TextStyle(
+                                      color: kHammerColor,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -2285,30 +2511,7 @@ class _GameScreenState extends State<GameScreen> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: _restartGame,
-                          icon: const Icon(Icons.refresh),
-                          label: Text(
-                            isCampaign
-                                ? 'Reiniciar Fase'
-                                : 'Reiniciar Jogo',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: kGreen,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        ),
+                        _buildBottomButtons(),
                         const SizedBox(height: 12),
                       ],
                     ),
