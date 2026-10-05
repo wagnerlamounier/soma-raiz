@@ -115,6 +115,16 @@ class CampaignLevel {
 
     return 'Faça $targetScore pontos';
   }
+
+  String get rulesSymbols {
+    final List<String> symbols = ['+'];
+
+    if (allowMultiplication) symbols.add('x');
+    if (allowCollapse) symbols.add('√');
+    if (allowMultiplesOfThree) symbols.add('3');
+
+    return symbols.join('   ');
+  }
 }
 
 final List<CampaignLevel> campaignLevels = _createCampaignLevels();
@@ -148,7 +158,7 @@ List<CampaignLevel> _createCampaignLevels() {
         boardSize: i <= 14 ? 4 : 3,
         targetScore: 180 + ((i - 10) * 55),
         targetValue: i == 12
-            ? 16
+            ? 32
             : i == 16
                 ? 32
                 : null,
@@ -169,7 +179,7 @@ List<CampaignLevel> _createCampaignLevels() {
         boardSize: i <= 24 ? 4 : 3,
         targetScore: 600 + ((i - 20) * 130),
         targetValue: i == 24
-            ? 25
+            ? 11
             : i == 28
                 ? 36
                 : null,
@@ -265,11 +275,13 @@ class CellData {
   int value;
   String operation;
   TileEvent event;
+  bool showRoot;
 
   CellData({
     required this.value,
     required this.operation,
     this.event = TileEvent.none,
+    this.showRoot = false,
   });
 }
 
@@ -655,7 +667,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
                         ),
                         const SizedBox(height: 5),
                         Text(
-                          'Fases desbloqueadas: '
+                          'Fases concluídas: '
                           '${min(progress.unlockedLevel - 1, 30)}/30\n'
                           'Estrelas: ${progress.totalStars}/90',
                           style: const TextStyle(
@@ -770,7 +782,8 @@ class HowToPlaySheet extends StatelessWidget {
                     text:
                         'A peça pode ter operação de soma ou multiplicação. '
                         'O resultado usa a operação da peça que está na frente '
-                        'no sentido do movimento.',
+                        'no sentido do movimento. Peças com o mesmo número '
+                        'têm a mesma cor.',
                     example: '4 + 4 = 8       3 x 3 = 9',
                   ),
                   _RuleCard(
@@ -780,7 +793,7 @@ class HowToPlaySheet extends StatelessWidget {
                     text:
                         'Quando uma fusão produz resultado acima de 99, o '
                         'valor pode sofrer um colapso e virar sua raiz '
-                        'quadrada arredondada.',
+                        'quadrada arredondada. Essas peças ganham o símbolo √.',
                     example: '64 + 64 = 128 → √128 ≈ 11',
                   ),
                   _RuleCard(
@@ -1276,7 +1289,6 @@ class _GameScreenState extends State<GameScreen> {
 
   bool _gameOver = false;
   bool _campaignWon = false;
-  bool _campaignResultShown = false;
 
   int _campaignMoves = 0;
   int _campaignStars = 0;
@@ -1353,7 +1365,6 @@ class _GameScreenState extends State<GameScreen> {
     score = 0;
     _gameOver = false;
     _campaignWon = false;
-    _campaignResultShown = false;
     _campaignMoves = 0;
     _campaignStars = 0;
 
@@ -1484,6 +1495,7 @@ class _GameScreenState extends State<GameScreen> {
       value: result,
       operation: a.operation,
       event: collapsed ? TileEvent.collapsed : TileEvent.merged,
+      showRoot: collapsed,
     );
   }
 
@@ -1673,7 +1685,7 @@ class _GameScreenState extends State<GameScreen> {
       return;
     }
 
-    bool reachedScore = score >= level.targetScore;
+    final bool reachedScore = score >= level.targetScore;
     bool reachedValue = false;
 
     if (level.targetValue != null) {
@@ -1689,10 +1701,10 @@ class _GameScreenState extends State<GameScreen> {
     final bool objectiveCompleted =
         level.targetValue != null ? reachedValue : reachedScore;
 
-    final bool exceededMoves =
-        level.maxMoves != null && _campaignMoves > level.maxMoves!;
+    final bool outOfMoves =
+        level.maxMoves != null && _campaignMoves >= level.maxMoves!;
 
-    if (objectiveCompleted && !exceededMoves) {
+    if (objectiveCompleted) {
       _campaignWon = true;
 
       final int movesRemaining = level.maxMoves == null
@@ -1706,7 +1718,7 @@ class _GameScreenState extends State<GameScreen> {
               : 1;
 
       _saveCampaignResult();
-    } else if (exceededMoves || _isGameOver()) {
+    } else if (outOfMoves || _isGameOver()) {
       _gameOver = true;
     }
   }
@@ -1830,33 +1842,14 @@ class _GameScreenState extends State<GameScreen> {
                 ),
               ),
               const Spacer(),
-              if (level.allowMultiplication)
-                const Text(
-                  '+  x',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+              Text(
+                level.rulesSymbols,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 17,
                 ),
-              if (level.allowCollapse) ...[
-                const SizedBox(width: 12),
-                const Icon(
-                  Icons.functions,
-                  color: Color(0xFFA8FFE4),
-                  size: 17,
-                ),
-              ],
-              if (level.allowMultiplesOfThree) ...[
-                const SizedBox(width: 12),
-                const Text(
-                  '3',
-                  style: TextStyle(
-                    color: Color(0xFFA8FFE4),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 17,
-                  ),
-                ),
-              ],
+              ),
             ],
           ),
         ],
@@ -1940,16 +1933,57 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  Color _colorForValue(int value) {
+    const List<Color> colors = [
+      Color(0xFF3B5BDB),
+      Color(0xFF7048E8),
+      Color(0xFFAE3EC9),
+      Color(0xFFD6336C),
+      Color(0xFFE03131),
+      Color(0xFFF08C00),
+      Color(0xFFFAB005),
+      Color(0xFF2F9E44),
+      Color(0xFF0CA678),
+      Color(0xFF1098AD),
+      Color(0xFF1971C2),
+      Color(0xFF5F3DC4),
+    ];
+
+    const List<int> commonValues = [
+      2,
+      3,
+      4,
+      5,
+      6,
+      8,
+      9,
+      11,
+      12,
+      16,
+      18,
+      24,
+    ];
+
+    final int knownIndex = commonValues.indexOf(value);
+
+    if (knownIndex >= 0) {
+      return colors[knownIndex % colors.length];
+    }
+
+    return colors[value.abs() % colors.length];
+  }
+
   Widget _buildTileBody(CellData cell) {
     final double fontSize = n >= 5 ? 20 : 24;
 
-    final Color tileColor = cell.operation == '+'
-        ? const Color(0xFF3C3C43)
-        : const Color(0xFF303F50);
+    final Color tileColor = _colorForValue(cell.value);
 
-    final Color borderColor = cell.operation == '+'
-        ? kGreen
-        : const Color(0xFF42A5F5);
+    final Color borderColor = cell.showRoot
+        ? const Color(0xFFFFC107)
+        : Colors.white.withAlpha(90);
+
+    final String displayedOperation =
+        cell.showRoot ? '√${cell.operation}' : cell.operation;
 
     return Container(
       decoration: BoxDecoration(
@@ -1957,7 +1991,7 @@ class _GameScreenState extends State<GameScreen> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: borderColor,
-          width: 2,
+          width: cell.showRoot ? 3 : 1.5,
         ),
       ),
       child: Stack(
@@ -1971,15 +2005,13 @@ class _GameScreenState extends State<GameScreen> {
                 vertical: 2,
               ),
               decoration: BoxDecoration(
-                color: cell.operation == '+'
-                    ? Colors.green.shade800
-                    : Colors.blue.shade800,
+                color: Colors.black.withAlpha(80),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
-                cell.operation,
+                displayedOperation,
                 style: const TextStyle(
-                  fontSize: 11,
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
