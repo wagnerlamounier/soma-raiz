@@ -40,16 +40,119 @@ const Color kGreen = Color(0xFF00B37E);
 const Color kBoardColor = Color(0xFF29292E);
 const Color kEmptyCellColor = Color(0xFF323238);
 const Color kHammerColor = Color(0xFFF59E0B);
+const Color kCoinColor = Color(0xFFFFC107);
 
 // ---------------------------------------------------------------------------
-// ITENS
+// ECONOMIA E ITENS
 // ---------------------------------------------------------------------------
 
-// Chave onde a quantidade de martelos fica salva no aparelho.
+// Chaves onde moedas e martelos ficam salvos no aparelho.
 const String kHammerStorageKey = 'item_hammer_count';
+const String kCoinStorageKey = 'player_coins';
 
-// Quantidade inicial (valor de teste; a economia virá depois).
+// Quantidade inicial de martelos (valor de teste).
 const int kInitialHammers = 5;
+
+// Preço de um martelo na loja.
+const int kHammerPrice = 40;
+
+// Recompensas por concluir fases.
+const int kFirstClearCoins = 20;
+const int kCoinsPerStar = 10;
+const int kRepeatClearCoins = 5;
+const int kHammerEveryLevels = 5;
+
+class PlayerWallet {
+  int coins = 0;
+  int hammers = kInitialHammers;
+
+  Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      coins = prefs.getInt(kCoinStorageKey) ?? 0;
+      hammers = prefs.getInt(kHammerStorageKey) ?? kInitialHammers;
+    } catch (e) {
+      debugPrint('Erro ao carregar carteira: $e');
+    }
+  }
+
+  Future<void> save() async {
+    final int savedCoins = coins;
+    final int savedHammers = hammers;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setInt(kCoinStorageKey, savedCoins);
+      await prefs.setInt(kHammerStorageKey, savedHammers);
+    } catch (e) {
+      debugPrint('Erro ao salvar carteira: $e');
+    }
+  }
+
+  bool buyHammer() {
+    if (coins < kHammerPrice) return false;
+
+    coins -= kHammerPrice;
+    hammers += 1;
+
+    return true;
+  }
+}
+
+// Abre a loja. Retorna true se uma compra foi feita.
+Future<bool> showHammerShop(
+  BuildContext context,
+  PlayerWallet wallet,
+) async {
+  final bool? bought = await showDialog<bool>(
+    context: context,
+    builder: (ctx) {
+      final bool canBuy = wallet.coins >= kHammerPrice;
+      bool busy = false;
+
+      return AlertDialog(
+        backgroundColor: kCardColor,
+        title: const Text('Loja'),
+        content: Text(
+          canBuy
+              ? 'Você tem ${wallet.coins} moedas.\n\n'
+                  'Comprar 1 martelo por $kHammerPrice moedas?'
+              : 'Você tem ${wallet.coins} moedas.\n\n'
+                  'Um martelo custa $kHammerPrice moedas. '
+                  'Conclua fases para ganhar mais moedas.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(canBuy ? 'Cancelar' : 'Fechar'),
+          ),
+          if (canBuy)
+            TextButton(
+              onPressed: () async {
+                if (busy) return;
+                busy = true;
+
+                wallet.buyHammer();
+                await wallet.save();
+
+                if (ctx.mounted) {
+                  Navigator.of(ctx).pop(true);
+                }
+              },
+              child: const Text(
+                'Comprar',
+                style: TextStyle(color: kGreen),
+              ),
+            ),
+        ],
+      );
+    },
+  );
+
+  return bought ?? false;
+}
 
 // ---------------------------------------------------------------------------
 // MODOS LIVRES
@@ -448,6 +551,7 @@ class CampaignScreen extends StatefulWidget {
 
 class _CampaignScreenState extends State<CampaignScreen> {
   final CampaignProgress progress = CampaignProgress();
+  final PlayerWallet wallet = PlayerWallet();
   bool loading = true;
 
   @override
@@ -458,12 +562,21 @@ class _CampaignScreenState extends State<CampaignScreen> {
 
   Future<void> _loadProgress() async {
     await progress.load();
+    await wallet.load();
 
     if (!mounted) return;
 
     setState(() {
       loading = false;
     });
+  }
+
+  Future<void> _openShop() async {
+    final bool bought = await showHammerShop(context, wallet);
+
+    if (bought && mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _openLevel(CampaignLevel level) async {
@@ -648,7 +761,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(18),
-              margin: const EdgeInsets.only(bottom: 18),
+              margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [
@@ -684,7 +797,9 @@ class _CampaignScreenState extends State<CampaignScreen> {
                         Text(
                           'Fases concluídas: '
                           '${min(progress.unlockedLevel - 1, 30)}/30\n'
-                          'Estrelas: ${progress.totalStars}/90',
+                          'Estrelas: ${progress.totalStars}/90\n'
+                          'Moedas: ${wallet.coins}  ·  '
+                          'Martelos: ${wallet.hammers}',
                           style: const TextStyle(
                             color: Color(0xFFD5FFF2),
                             height: 1.4,
@@ -694,6 +809,34 @@ class _CampaignScreenState extends State<CampaignScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: _openShop,
+                  icon: const Icon(Icons.storefront),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Loja · Martelo por $kHammerPrice moedas',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kCoinColor,
+                    side: const BorderSide(color: kCoinColor),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
               ),
             ),
             _buildWorld(1),
@@ -820,6 +963,16 @@ class HowToPlaySheet extends StatelessWidget {
                         'uma peça para destruí-la. Usar o martelo não conta '
                         'como jogada e consome um item. Toque em Cancelar '
                         'para desistir sem gastar.',
+                  ),
+                  _RuleCard(
+                    icon: Icons.monetization_on_outlined,
+                    accent: kCoinColor,
+                    title: 'Moedas e Loja',
+                    text:
+                        'Ao concluir fases da campanha você ganha moedas, '
+                        'e mais ainda se conquistar estrelas. Algumas fases '
+                        'também dão um martelo de bônus. Use as moedas na '
+                        'loja do mapa da campanha para comprar martelos.',
                   ),
                   _RuleCard(
                     icon: Icons.block,
@@ -1126,6 +1279,8 @@ class CampaignResultOverlay extends StatelessWidget {
   final int score;
   final int stars;
   final bool won;
+  final int rewardCoins;
+  final int rewardHammers;
   final VoidCallback onRetry;
   final VoidCallback onBackToMap;
 
@@ -1135,6 +1290,8 @@ class CampaignResultOverlay extends StatelessWidget {
     required this.score,
     required this.stars,
     required this.won,
+    required this.rewardCoins,
+    required this.rewardHammers,
     required this.onRetry,
     required this.onBackToMap,
   });
@@ -1151,6 +1308,68 @@ class CampaignResultOverlay extends StatelessWidget {
               : const Color(0xFF66666D),
           size: 42,
         ),
+      ),
+    );
+  }
+
+  Widget _buildRewards() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
+      decoration: BoxDecoration(
+        color: kBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 18,
+        runSpacing: 8,
+        children: [
+          if (rewardCoins > 0)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.monetization_on,
+                  color: kCoinColor,
+                  size: 24,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '+$rewardCoins moedas',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          if (rewardHammers > 0)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.gavel,
+                  color: kHammerColor,
+                  size: 22,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '+$rewardHammers martelo',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -1206,6 +1425,10 @@ class CampaignResultOverlay extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
+            if (won && (rewardCoins > 0 || rewardHammers > 0)) ...[
+              const SizedBox(height: 16),
+              _buildRewards(),
+            ],
             const SizedBox(height: 22),
             SizedBox(
               width: double.infinity,
@@ -1318,8 +1541,12 @@ class _GameScreenState extends State<GameScreen> {
   int _campaignMoves = 0;
   int _campaignStars = 0;
 
-  // Item: martelo
-  int _hammers = 0;
+  // Carteira (moedas e martelos) e recompensa da última vitória.
+  final PlayerWallet wallet = PlayerWallet();
+  int _rewardCoins = 0;
+  int _rewardHammers = 0;
+
+  int get _hammers => wallet.hammers;
   bool _hammerActive = false;
 
   final Random random = Random();
@@ -1342,7 +1569,7 @@ class _GameScreenState extends State<GameScreen> {
 
     if (isCampaign) {
       _loadCampaignProgress();
-      _loadHammers();
+      _loadWallet();
     } else {
       _loadBestScore();
     }
@@ -1356,30 +1583,12 @@ class _GameScreenState extends State<GameScreen> {
     }
   }
 
-  Future<void> _loadHammers() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final int saved = prefs.getInt(kHammerStorageKey) ?? kInitialHammers;
+  Future<void> _loadWallet() async {
+    await wallet.load();
 
-      if (!mounted) return;
+    if (!mounted) return;
 
-      setState(() {
-        _hammers = saved;
-      });
-    } catch (e) {
-      debugPrint('Erro ao carregar martelos: $e');
-    }
-  }
-
-  Future<void> _saveHammers() async {
-    final int value = _hammers;
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(kHammerStorageKey, value);
-    } catch (e) {
-      debugPrint('Erro ao salvar martelos: $e');
-    }
+    setState(() {});
   }
 
   Future<void> _loadBestScore() async {
@@ -1423,6 +1632,8 @@ class _GameScreenState extends State<GameScreen> {
     _campaignWon = false;
     _campaignMoves = 0;
     _campaignStars = 0;
+    _rewardCoins = 0;
+    _rewardHammers = 0;
     _hammerActive = false;
 
     _recordAtStart = bestScore;
@@ -1736,13 +1947,25 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   // -------------------------------------------------------------------------
-  // MARTELO
+  // MARTELO E LOJA
   // -------------------------------------------------------------------------
+
+  Future<void> _openHammerShop() async {
+    final bool bought = await showHammerShop(context, wallet);
+
+    if (bought && mounted) {
+      setState(() {});
+    }
+  }
 
   void _toggleHammer() {
     if (!isCampaign || _gameOver || _campaignWon) return;
 
-    if (!_hammerActive && _hammers <= 0) return;
+    // Sem martelos: oferece a compra na loja.
+    if (!_hammerActive && _hammers <= 0) {
+      _openHammerShop();
+      return;
+    }
 
     HapticFeedback.selectionClick();
 
@@ -1781,11 +2004,11 @@ class _GameScreenState extends State<GameScreen> {
 
     setState(() {
       board[row][column] = null;
-      _hammers--;
+      wallet.hammers--;
       _hammerActive = false;
     });
 
-    await _saveHammers();
+    await wallet.save();
   }
 
   // -------------------------------------------------------------------------
@@ -1843,11 +2066,46 @@ class _GameScreenState extends State<GameScreen> {
     if (level == null) return;
 
     try {
+      // Recarrega o progresso para saber se é a primeira vez na fase.
+      await campaignProgress.load();
+
+      final int oldStars = campaignProgress.starsFor(level.number);
+      final bool firstClear = oldStars == 0;
+
+      int coins;
+      int hammers = 0;
+
+      if (firstClear) {
+        coins = kFirstClearCoins + (kCoinsPerStar * _campaignStars);
+
+        if (level.number % kHammerEveryLevels == 0) {
+          hammers = 1;
+        }
+      } else {
+        final int newStars = max(0, _campaignStars - oldStars);
+
+        coins = newStars > 0
+            ? newStars * kCoinsPerStar
+            : kRepeatClearCoins;
+      }
+
       await campaignProgress.saveLevelResult(
         levelNumber: level.number,
         earnedStars: _campaignStars,
         score: score,
       );
+
+      wallet.coins += coins;
+      wallet.hammers += hammers;
+
+      await wallet.save();
+
+      if (!mounted || !_campaignWon) return;
+
+      setState(() {
+        _rewardCoins = coins;
+        _rewardHammers = hammers;
+      });
     } catch (e) {
       debugPrint('Erro ao salvar resultado da campanha: $e');
     }
@@ -1885,6 +2143,41 @@ class _GameScreenState extends State<GameScreen> {
               fontSize: 22,
               fontWeight: FontWeight.bold,
               color: kGreen,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCoinBox() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: kCardColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'MOEDAS',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${wallet.coins}',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: kCoinColor,
             ),
           ),
         ],
@@ -2067,8 +2360,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _buildHammerButton() {
-    final bool canUse =
-        !_gameOver && !_campaignWon && (_hammerActive || _hammers > 0);
+    final bool canUse = !_gameOver && !_campaignWon;
 
     return ElevatedButton.icon(
       onPressed: canUse ? _toggleHammer : null,
@@ -2351,7 +2643,7 @@ class _GameScreenState extends State<GameScreen> {
           body: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final double reservedHeight = isCampaign ? 370 : 330;
+                final double reservedHeight = isCampaign ? 400 : 330;
 
                 final double boardSize = max(
                   200,
@@ -2366,154 +2658,168 @@ class _GameScreenState extends State<GameScreen> {
 
                 final double gap = n >= 5 ? 6 : 8;
 
+                // O conteúdo não rola: se não couber na altura da tela,
+                // o FittedBox reduz tudo proporcionalmente até caber.
                 return Center(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        if (isCampaign) _buildCampaignHeader(),
-                        if (!isCampaign) ...[
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: SizedBox(
+                      width: constraints.maxWidth,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (isCampaign) _buildCampaignHeader(),
+                          if (!isCampaign) ...[
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildScoreBox('PONTOS', score),
+                                const SizedBox(width: 12),
+                                _buildScoreBox('RECORDE', bestScore),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            _buildModeSelector(),
+                          ],
+                          if (isCampaign)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _buildScoreBox('PONTOS', score),
+                                  const SizedBox(width: 12),
+                                  _buildCoinBox(),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                          Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerDown: (event) {
+                              _pointerStart = event.position;
+                            },
+                            onPointerUp: (event) {
+                              final Offset? start = _pointerStart;
+                              _pointerStart = null;
+
+                              if (start == null) return;
+
+                              final Offset distance =
+                                  event.position - start;
+
+                              // Com o martelo ativo, um toque escolhe a peça.
+                              if (_hammerActive) {
+                                if (distance.distance < 15) {
+                                  _useHammerAt(
+                                    event.localPosition,
+                                    boardSize,
+                                    gap,
+                                  );
+                                }
+                                return;
+                              }
+
+                              _handleSwipe(
+                                distance.dx,
+                                distance.dy,
+                              );
+                            },
+                            onPointerCancel: (_) {
+                              _pointerStart = null;
+                            },
+                            child: Container(
+                              width: boardSize,
+                              height: boardSize,
+                              // 3 de borda + 7 de padding = 10 de espaço
+                              // interno.
+                              padding: const EdgeInsets.all(7),
+                              decoration: BoxDecoration(
+                                color: kBoardColor,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: _hammerActive
+                                      ? kHammerColor
+                                      : Colors.transparent,
+                                  width: 3,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color.fromRGBO(0, 0, 0, 0.4),
+                                    blurRadius: 12,
+                                    offset: Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: IgnorePointer(
+                                child: GridView.builder(
+                                  physics:
+                                      const NeverScrollableScrollPhysics(),
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: n,
+                                    crossAxisSpacing: gap,
+                                    mainAxisSpacing: gap,
+                                  ),
+                                  itemCount: n * n,
+                                  itemBuilder: (context, index) {
+                                    final int row = index ~/ n;
+                                    final int column = index % n;
+
+                                    return _buildCell(
+                                      board[row][column],
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            height: isCampaign ? 30 : 16,
+                            child: isCampaign && _hammerActive
+                                ? const Center(
+                                    child: Text(
+                                      'Toque em uma peça para destruí-la',
+                                      style: TextStyle(
+                                        color: kHammerColor,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                          ),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              _buildScoreBox('PONTOS', score),
-                              const SizedBox(width: 12),
-                              _buildScoreBox('RECORDE', bestScore),
+                              _buildArrowButton(
+                                Icons.arrow_back,
+                                -100,
+                                0,
+                              ),
+                              _buildArrowButton(
+                                Icons.arrow_upward,
+                                0,
+                                -100,
+                              ),
+                              _buildArrowButton(
+                                Icons.arrow_downward,
+                                0,
+                                100,
+                              ),
+                              _buildArrowButton(
+                                Icons.arrow_forward,
+                                100,
+                                0,
+                              ),
                             ],
                           ),
+                          const SizedBox(height: 16),
+                          _buildBottomButtons(),
                           const SizedBox(height: 12),
-                          _buildModeSelector(),
                         ],
-                        if (isCampaign)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _buildScoreBox('PONTOS', score),
-                          ),
-                        const SizedBox(height: 8),
-                        Listener(
-                          behavior: HitTestBehavior.opaque,
-                          onPointerDown: (event) {
-                            _pointerStart = event.position;
-                          },
-                          onPointerUp: (event) {
-                            final Offset? start = _pointerStart;
-                            _pointerStart = null;
-
-                            if (start == null) return;
-
-                            final Offset distance =
-                                event.position - start;
-
-                            // Com o martelo ativo, um toque escolhe a peça.
-                            if (_hammerActive) {
-                              if (distance.distance < 15) {
-                                _useHammerAt(
-                                  event.localPosition,
-                                  boardSize,
-                                  gap,
-                                );
-                              }
-                              return;
-                            }
-
-                            _handleSwipe(
-                              distance.dx,
-                              distance.dy,
-                            );
-                          },
-                          onPointerCancel: (_) {
-                            _pointerStart = null;
-                          },
-                          child: Container(
-                            width: boardSize,
-                            height: boardSize,
-                            // 3 de borda + 7 de padding = 10 de espaço interno.
-                            padding: const EdgeInsets.all(7),
-                            decoration: BoxDecoration(
-                              color: kBoardColor,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: _hammerActive
-                                    ? kHammerColor
-                                    : Colors.transparent,
-                                width: 3,
-                              ),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color.fromRGBO(0, 0, 0, 0.4),
-                                  blurRadius: 12,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: IgnorePointer(
-                              child: GridView.builder(
-                                physics:
-                                    const NeverScrollableScrollPhysics(),
-                                gridDelegate:
-                                    SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: n,
-                                  crossAxisSpacing: gap,
-                                  mainAxisSpacing: gap,
-                                ),
-                                itemCount: n * n,
-                                itemBuilder: (context, index) {
-                                  final int row = index ~/ n;
-                                  final int column = index % n;
-
-                                  return _buildCell(
-                                    board[row][column],
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          height: isCampaign ? 30 : 16,
-                          child: isCampaign && _hammerActive
-                              ? const Center(
-                                  child: Text(
-                                    'Toque em uma peça para destruí-la',
-                                    style: TextStyle(
-                                      color: kHammerColor,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                )
-                              : null,
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildArrowButton(
-                              Icons.arrow_back,
-                              -100,
-                              0,
-                            ),
-                            _buildArrowButton(
-                              Icons.arrow_upward,
-                              0,
-                              -100,
-                            ),
-                            _buildArrowButton(
-                              Icons.arrow_downward,
-                              0,
-                              100,
-                            ),
-                            _buildArrowButton(
-                              Icons.arrow_forward,
-                              100,
-                              0,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        _buildBottomButtons(),
-                        const SizedBox(height: 12),
-                      ],
+                      ),
                     ),
                   ),
                 );
@@ -2535,6 +2841,8 @@ class _GameScreenState extends State<GameScreen> {
             score: score,
             stars: _campaignStars,
             won: _campaignWon,
+            rewardCoins: _rewardCoins,
+            rewardHammers: _rewardHammers,
             onRetry: _restartGame,
             onBackToMap: _returnToCampaignMap,
           ),
