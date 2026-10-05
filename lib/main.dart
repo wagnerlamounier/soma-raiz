@@ -183,7 +183,7 @@ List<CampaignLevel> _createCampaignLevels() {
             : i == 28
                 ? 36
                 : null,
-        maxMoves: i >= 26 ? 30 - (i - 26) : null,
+        maxMoves: i >= 26 ? 32 - (i - 26) : null,
         allowMultiplication: true,
         allowCollapse: true,
         allowMultiplesOfThree: i >= 25,
@@ -1934,114 +1934,125 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Color _colorForValue(int value) {
-    const List<Color> colors = [
-      Color(0xFF3B5BDB),
-      Color(0xFF7048E8),
-      Color(0xFFAE3EC9),
-      Color(0xFFD6336C),
-      Color(0xFFE03131),
-      Color(0xFFF08C00),
-      Color(0xFFFAB005),
-      Color(0xFF2F9E44),
-      Color(0xFF0CA678),
-      Color(0xFF1098AD),
-      Color(0xFF1971C2),
-      Color(0xFF5F3DC4),
-    ];
+  // As cores têm transparência para deixar o tabuleiro aparecer
+  // levemente por baixo das peças.
+  const Map<int, Color> valueColors = {
+    2: Color.fromRGBO(66, 135, 245, 0.84),
+    3: Color.fromRGBO(0, 179, 126, 0.84),
+    4: Color.fromRGBO(132, 94, 247, 0.84),
+    5: Color.fromRGBO(214, 93, 160, 0.84),
+    6: Color.fromRGBO(230, 76, 60, 0.84),
+    8: Color.fromRGBO(245, 166, 35, 0.84),
+    9: Color.fromRGBO(20, 184, 166, 0.84),
+    11: Color.fromRGBO(239, 108, 0, 0.84),
+    12: Color.fromRGBO(67, 160, 71, 0.84),
+    16: Color.fromRGBO(156, 39, 176, 0.84),
+    18: Color.fromRGBO(3, 155, 229, 0.84),
+    24: Color.fromRGBO(198, 40, 40, 0.84),
+    25: Color.fromRGBO(121, 85, 72, 0.84),
+    32: Color.fromRGBO(63, 81, 181, 0.84),
+    36: Color.fromRGBO(0, 137, 123, 0.84),
+    48: Color.fromRGBO(173, 20, 87, 0.84),
+    64: Color.fromRGBO(230, 81, 0, 0.84),
+    81: Color.fromRGBO(46, 125, 50, 0.84),
+    128: Color.fromRGBO(81, 45, 168, 0.84),
+    256: Color.fromRGBO(0, 96, 100, 0.84),
+    512: Color.fromRGBO(183, 28, 28, 0.84),
+  };
 
-    const List<int> commonValues = [
-      2,
-      3,
-      4,
-      5,
-      6,
-      8,
-      9,
-      11,
-      12,
-      16,
-      18,
-      24,
-    ];
+  final Color? knownColor = valueColors[value];
 
-    final int knownIndex = commonValues.indexOf(value);
-
-    if (knownIndex >= 0) {
-      return colors[knownIndex % colors.length];
-    }
-
-    return colors[value.abs() % colors.length];
+  if (knownColor != null) {
+    return knownColor;
   }
 
+  // Para valores que ainda não estão na tabela, produz uma cor
+  // baseada no próprio número, sem repetir exatamente uma cor fixa.
+  final double hue = (value * 47.0) % 360;
+
+  return HSVColor.fromAHSV(
+    0.84,
+    hue,
+    0.68,
+    0.86,
+  ).toColor();
+}
+
   Widget _buildTileBody(CellData cell) {
-    final double fontSize = n >= 5 ? 20 : 24;
+  final double fontSize = n >= 5 ? 20 : 24;
 
-    final Color tileColor = _colorForValue(cell.value);
+  final Color tileColor = _colorForValue(cell.value);
 
-    final Color borderColor = cell.showRoot
-        ? const Color(0xFFFFC107)
-        : Colors.white.withAlpha(90);
+  final Color borderColor = cell.showRoot
+      ? const Color.fromRGBO(255, 193, 7, 0.95)
+      : Colors.white.withAlpha(125);
 
-    final String displayedOperation =
-        cell.showRoot ? '√${cell.operation}' : cell.operation;
+  final String displayedOperation =
+      cell.showRoot ? '√${cell.operation}' : cell.operation;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: tileColor,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: borderColor,
-          width: cell.showRoot ? 3 : 1.5,
-        ),
+  return Container(
+    decoration: BoxDecoration(
+      color: tileColor,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(
+        color: borderColor,
+        width: cell.showRoot ? 3 : 1.5,
       ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: 4,
-            left: 6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 5,
-                vertical: 2,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.black.withAlpha(80),
-                borderRadius: BorderRadius.circular(4),
-              ),
+    ),
+    child: Stack(
+      children: [
+        Positioned(
+          top: 4,
+          left: 5,
+          right: 5,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 6,
+              vertical: 3,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha(105),
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
               child: Text(
                 displayedOperation,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.only(
+              top: 14,
+              left: 4,
+              right: 4,
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                '${cell.value}',
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w900,
                   color: Colors.white,
                 ),
               ),
             ),
           ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.only(
-                top: 10,
-                left: 4,
-                right: 4,
-              ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  '${cell.value}',
-                  style: TextStyle(
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildPop(
     CellData cell,
