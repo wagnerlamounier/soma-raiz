@@ -192,6 +192,9 @@ class CampaignLevel {
   final bool allowCollapse;
   final bool allowMultiplesOfThree;
 
+  // Quantas vezes o martelo pode ser usado em uma partida desta fase.
+  final int maxHammerUses;
+
   const CampaignLevel({
     required this.number,
     required this.world,
@@ -203,6 +206,7 @@ class CampaignLevel {
     required this.allowMultiplication,
     required this.allowCollapse,
     required this.allowMultiplesOfThree,
+    this.maxHammerUses = 2,
   });
 
   String get worldName {
@@ -233,7 +237,7 @@ class CampaignLevel {
   String get rulesSymbols {
     final List<String> symbols = ['+'];
 
-    if (allowMultiplication) symbols.add('x');
+    if (allowMultiplication) symbols.add('×');
     if (allowCollapse) symbols.add('√');
     if (allowMultiplesOfThree) symbols.add('3');
 
@@ -259,6 +263,7 @@ List<CampaignLevel> _createCampaignLevels() {
         allowMultiplication: false,
         allowCollapse: false,
         allowMultiplesOfThree: false,
+        maxHammerUses: 1,
       ),
     );
   }
@@ -280,6 +285,7 @@ List<CampaignLevel> _createCampaignLevels() {
         allowMultiplication: true,
         allowCollapse: false,
         allowMultiplesOfThree: false,
+        maxHammerUses: 2,
       ),
     );
   }
@@ -305,6 +311,7 @@ List<CampaignLevel> _createCampaignLevels() {
         allowMultiplication: true,
         allowCollapse: true,
         allowMultiplesOfThree: i >= 25,
+        maxHammerUses: 3,
       ),
     );
   }
@@ -938,11 +945,12 @@ class HowToPlaySheet extends StatelessWidget {
                     accent: Color(0xFF2E7D32),
                     title: 'Operações',
                     text:
-                        'A peça pode ter operação de soma ou multiplicação. '
-                        'O resultado usa a operação da peça que está na frente '
-                        'no sentido do movimento. Peças com o mesmo número '
-                        'têm a mesma cor.',
-                    example: '4 + 4 = 8       3 x 3 = 9',
+                        'O símbolo repetido ao redor da borda de cada peça '
+                        'mostra a operação dela: + para soma e × para '
+                        'multiplicação. O resultado usa a operação da peça '
+                        'que está na frente no sentido do movimento. Peças '
+                        'com o mesmo número têm a mesma cor.',
+                    example: '4 + 4 = 8       3 × 3 = 9',
                   ),
                   _RuleCard(
                     icon: Icons.functions,
@@ -951,7 +959,8 @@ class HowToPlaySheet extends StatelessWidget {
                     text:
                         'Quando uma fusão produz resultado acima de 99, o '
                         'valor pode sofrer um colapso e virar sua raiz '
-                        'quadrada arredondada. Essas peças ganham o símbolo √.',
+                        'quadrada arredondada. Essas peças ganham borda '
+                        'dourada e o símbolo √ no canto.',
                     example: '64 + 64 = 128 → √128 ≈ 11',
                   ),
                   _RuleCard(
@@ -961,8 +970,11 @@ class HowToPlaySheet extends StatelessWidget {
                     text:
                         'Na campanha, toque no botão Martelo e depois em '
                         'uma peça para destruí-la. Usar o martelo não conta '
-                        'como jogada e consome um item. Toque em Cancelar '
-                        'para desistir sem gastar.',
+                        'como jogada e consome um item. Cada fase tem um '
+                        'limite de usos do martelo, mostrado abaixo do '
+                        'tabuleiro. Ao reiniciar a fase, os usos permitidos '
+                        'voltam, mas os martelos gastos não. Toque em '
+                        'Cancelar para desistir sem gastar.',
                   ),
                   _RuleCard(
                     icon: Icons.monetization_on_outlined,
@@ -1549,6 +1561,17 @@ class _GameScreenState extends State<GameScreen> {
   int get _hammers => wallet.hammers;
   bool _hammerActive = false;
 
+  // Quantas vezes o martelo já foi usado nesta partida da fase.
+  int _hammerUsesThisRun = 0;
+
+  int get _hammerUsesLeft {
+    final CampaignLevel? level = campaignLevel;
+
+    if (level == null) return 0;
+
+    return max(0, level.maxHammerUses - _hammerUsesThisRun);
+  }
+
   final Random random = Random();
   final CampaignProgress campaignProgress = CampaignProgress();
 
@@ -1635,6 +1658,7 @@ class _GameScreenState extends State<GameScreen> {
     _rewardCoins = 0;
     _rewardHammers = 0;
     _hammerActive = false;
+    _hammerUsesThisRun = 0;
 
     _recordAtStart = bestScore;
 
@@ -1961,6 +1985,9 @@ class _GameScreenState extends State<GameScreen> {
   void _toggleHammer() {
     if (!isCampaign || _gameOver || _campaignWon) return;
 
+    // Limite de usos da fase atingido: o martelo não pode ser ativado.
+    if (!_hammerActive && _hammerUsesLeft <= 0) return;
+
     // Sem martelos: oferece a compra na loja.
     if (!_hammerActive && _hammers <= 0) {
       _openHammerShop();
@@ -1980,6 +2007,7 @@ class _GameScreenState extends State<GameScreen> {
     double gap,
   ) async {
     if (!_hammerActive || _hammers <= 0) return;
+    if (_hammerUsesLeft <= 0) return;
     if (_gameOver || _campaignWon) return;
 
     // O tabuleiro tem 10 de espaço interno (3 de borda + 7 de padding).
@@ -2005,6 +2033,7 @@ class _GameScreenState extends State<GameScreen> {
     setState(() {
       board[row][column] = null;
       wallet.hammers--;
+      _hammerUsesThisRun++;
       _hammerActive = false;
     });
 
@@ -2360,7 +2389,11 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _buildHammerButton() {
-    final bool canUse = !_gameOver && !_campaignWon;
+    // O botão fica ativo se o martelo já está ligado (para cancelar)
+    // ou se ainda restam usos na fase.
+    final bool canUse = !_gameOver &&
+        !_campaignWon &&
+        (_hammerActive || _hammerUsesLeft > 0);
 
     return ElevatedButton.icon(
       onPressed: canUse ? _toggleHammer : null,
@@ -2380,13 +2413,52 @@ class _GameScreenState extends State<GameScreen> {
         foregroundColor: _hammerActive ? Colors.black : kHammerColor,
         disabledBackgroundColor: kCardColor,
         disabledForegroundColor: const Color(0xFF66666D),
-        side: const BorderSide(color: kHammerColor, width: 1.5),
+        side: BorderSide(
+          color: canUse ? kHammerColor : const Color(0xFF66666D),
+          width: 1.5,
+        ),
         padding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 12,
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
+
+  // Texto abaixo do tabuleiro (apenas na campanha).
+  Widget _buildHammerStatusText() {
+    final CampaignLevel level = campaignLevel!;
+
+    if (_hammerActive) {
+      return const Center(
+        child: Text(
+          'Toque em uma peça para destruí-la',
+          style: TextStyle(
+            color: kHammerColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+      );
+    }
+
+    final bool limitReached = _hammerUsesLeft <= 0;
+
+    return Center(
+      child: Text(
+        limitReached
+            ? 'Limite de martelos desta fase atingido'
+            : 'Martelo: $_hammerUsesLeft de ${level.maxHammerUses} '
+                'usos nesta fase',
+        style: TextStyle(
+          color: limitReached
+              ? const Color(0xFFC62828)
+              : const Color(0xFF9A9AA2),
+          fontWeight: FontWeight.bold,
+          fontSize: 13,
         ),
       ),
     );
@@ -2419,8 +2491,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Color _colorForValue(int value) {
-    // As cores têm transparência para deixar o tabuleiro aparecer
-    // levemente por baixo das peças.
+    // Cada valor tem sempre a mesma cor, independente da operação.
     const Map<int, Color> valueColors = {
       2: Color.fromRGBO(66, 135, 245, 0.84),
       3: Color.fromRGBO(0, 179, 126, 0.84),
@@ -2463,79 +2534,165 @@ class _GameScreenState extends State<GameScreen> {
     ).toColor();
   }
 
+  // Peça no estilo "moldura com símbolos": a operação se repete ao redor
+  // da borda e o número fica num quadrado central.
   Widget _buildTileBody(CellData cell) {
-    final double fontSize = n >= 5 ? 20 : 24;
-
     final Color tileColor = _colorForValue(cell.value);
+    final Color solid = tileColor.withAlpha(255);
+
+    // Moldura escura, com o tom da cor do número.
+    final Color frameColor = Color.alphaBlend(
+      Colors.black.withAlpha(120),
+      solid,
+    );
+
+    // Símbolos mais claros que a cor da peça.
+    final Color symbolColor = Color.alphaBlend(
+      Colors.white.withAlpha(110),
+      solid,
+    );
 
     final Color borderColor = cell.showRoot
         ? const Color.fromRGBO(255, 193, 7, 0.95)
-        : Colors.white.withAlpha(125);
+        : solid;
 
-    final String displayedOperation =
-        cell.showRoot ? '√${cell.operation}' : cell.operation;
+    final String symbol = cell.operation == 'x' ? '×' : '+';
 
-    return Container(
-      decoration: BoxDecoration(
-        color: tileColor,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: borderColor,
-          width: cell.showRoot ? 3 : 1.5,
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: 4,
-            left: 5,
-            right: 5,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 3,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double size = min(
+          constraints.maxWidth,
+          constraints.maxHeight,
+        );
+
+        final double band = size * 0.2;
+        final double edge = size * 0.035;
+        final double symbolSize = max(9.0, size * 0.15);
+
+        final TextStyle symbolStyle = TextStyle(
+          color: symbolColor,
+          fontSize: symbolSize,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        );
+
+        Widget sym() => Text(symbol, style: symbolStyle);
+
+        return Container(
+          decoration: BoxDecoration(
+            color: frameColor,
+            borderRadius: BorderRadius.circular(size * 0.2),
+            border: Border.all(
+              color: borderColor,
+              width: cell.showRoot ? 3 : 2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: solid.withAlpha(110),
+                blurRadius: 6,
               ),
-              decoration: BoxDecoration(
-                color: Colors.black.withAlpha(105),
-                borderRadius: BorderRadius.circular(5),
+            ],
+          ),
+          child: Stack(
+            children: [
+              // Símbolos: topo, base, esquerda e direita.
+              Positioned(
+                top: edge,
+                left: band,
+                right: band,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [sym(), sym(), sym()],
+                ),
               ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  displayedOperation,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    height: 1,
+              Positioned(
+                bottom: edge,
+                left: band,
+                right: band,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [sym(), sym(), sym()],
+                ),
+              ),
+              Positioned(
+                left: edge,
+                top: band,
+                bottom: band,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [sym(), sym(), sym()],
+                ),
+              ),
+              Positioned(
+                right: edge,
+                top: band,
+                bottom: band,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [sym(), sym(), sym()],
+                ),
+              ),
+              // Quadrado central com o número.
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.all(band),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: tileColor,
+                      borderRadius: BorderRadius.circular(size * 0.12),
+                      border: Border.all(
+                        color: Colors.white.withAlpha(70),
+                        width: 1,
+                      ),
+                    ),
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(size * 0.03),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                '${cell.value}',
+                                style: TextStyle(
+                                  fontSize: size * 0.32,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                  shadows: const [
+                                    Shadow(
+                                      color: Color.fromRGBO(0, 0, 0, 0.45),
+                                      blurRadius: 3,
+                                      offset: Offset(0, 1.5),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (cell.showRoot)
+                          Positioned(
+                            top: size * 0.01,
+                            left: size * 0.04,
+                            child: Text(
+                              '√',
+                              style: TextStyle(
+                                color: const Color(0xFFFFD54F),
+                                fontSize: max(10.0, size * 0.17),
+                                fontWeight: FontWeight.w900,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.only(
-                top: 14,
-                left: 4,
-                right: 4,
-              ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  '${cell.value}',
-                  style: TextStyle(
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -2777,17 +2934,8 @@ class _GameScreenState extends State<GameScreen> {
                           ),
                           SizedBox(
                             height: isCampaign ? 30 : 16,
-                            child: isCampaign && _hammerActive
-                                ? const Center(
-                                    child: Text(
-                                      'Toque em uma peça para destruí-la',
-                                      style: TextStyle(
-                                        color: kHammerColor,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  )
+                            child: isCampaign
+                                ? _buildHammerStatusText()
                                 : null,
                           ),
                           Row(
