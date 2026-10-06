@@ -945,7 +945,6 @@ class HowToPlaySheet extends StatelessWidget {
                     accent: Color(0xFF2E7D32),
                     title: 'Operações',
                     text:
-                                            text:
                         'O círculo no canto superior direito de cada peça '
                         'mostra a operação dela: azul com + para soma e '
                         'vermelho com × para multiplicação. O resultado '
@@ -959,7 +958,6 @@ class HowToPlaySheet extends StatelessWidget {
                     accent: Color(0xFF1565C0),
                     title: 'Raiz Quadrada',
                     text:
-                                            text:
                         'Quando uma fusão produz resultado acima de 99, o '
                         'valor pode sofrer um colapso e virar sua raiz '
                         'quadrada arredondada. Essas peças ganham borda '
