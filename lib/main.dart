@@ -40,18 +40,23 @@ const Color kGreen = Color(0xFF00B37E);
 const Color kBoardColor = Color(0xFF29292E);
 const Color kEmptyCellColor = Color(0xFF323238);
 const Color kHammerColor = Color(0xFFF59E0B);
+const Color kScissorsColor = Color(0xFF42A5F5);
 const Color kCoinColor = Color(0xFFFFC107);
 
 // ---------------------------------------------------------------------------
 // ECONOMIA E ITENS
 // ---------------------------------------------------------------------------
 
-// Chaves onde moedas e martelos ficam salvos no aparelho.
+// Chaves onde moedas e itens ficam salvos no aparelho.
 const String kHammerStorageKey = 'item_hammer_count';
 const String kCoinStorageKey = 'player_coins';
+const String kScissorsStorageKey = 'item_scissors_count';
 
 // Quantidade inicial de martelos (valor de teste).
 const int kInitialHammers = 5;
+
+// Quantidade inicial de tesouras (valor de teste).
+const int kInitialScissors = 5;
 
 // Preço de um martelo na loja.
 const int kHammerPrice = 40;
@@ -65,6 +70,7 @@ const int kHammerEveryLevels = 5;
 class PlayerWallet {
   int coins = 0;
   int hammers = kInitialHammers;
+  int scissors = kInitialScissors;
 
   Future<void> load() async {
     try {
@@ -72,6 +78,8 @@ class PlayerWallet {
 
       coins = prefs.getInt(kCoinStorageKey) ?? 0;
       hammers = prefs.getInt(kHammerStorageKey) ?? kInitialHammers;
+      scissors =
+          prefs.getInt(kScissorsStorageKey) ?? kInitialScissors;
     } catch (e) {
       debugPrint('Erro ao carregar carteira: $e');
     }
@@ -80,12 +88,17 @@ class PlayerWallet {
   Future<void> save() async {
     final int savedCoins = coins;
     final int savedHammers = hammers;
+    final int savedScissors = scissors;
 
     try {
       final prefs = await SharedPreferences.getInstance();
 
       await prefs.setInt(kCoinStorageKey, savedCoins);
       await prefs.setInt(kHammerStorageKey, savedHammers);
+      await prefs.setInt(
+        kScissorsStorageKey,
+        savedScissors,
+      );
     } catch (e) {
       debugPrint('Erro ao salvar carteira: $e');
     }
@@ -195,6 +208,9 @@ class CampaignLevel {
   // Quantas vezes o martelo pode ser usado em uma partida desta fase.
   final int maxHammerUses;
 
+  // Quantas vezes a tesoura pode ser usada nesta fase.
+  final int maxScissorsUses;
+
   const CampaignLevel({
     required this.number,
     required this.world,
@@ -207,6 +223,7 @@ class CampaignLevel {
     required this.allowCollapse,
     required this.allowMultiplesOfThree,
     this.maxHammerUses = 2,
+    this.maxScissorsUses = 0,
   });
 
   String get worldName {
@@ -264,6 +281,7 @@ List<CampaignLevel> _createCampaignLevels() {
         allowCollapse: false,
         allowMultiplesOfThree: false,
         maxHammerUses: 1,
+        maxScissorsUses: 0,
       ),
     );
   }
@@ -286,6 +304,7 @@ List<CampaignLevel> _createCampaignLevels() {
         allowCollapse: false,
         allowMultiplesOfThree: false,
         maxHammerUses: 2,
+        maxScissorsUses: 0,
       ),
     );
   }
@@ -312,6 +331,7 @@ List<CampaignLevel> _createCampaignLevels() {
         allowCollapse: true,
         allowMultiplesOfThree: i >= 25,
         maxHammerUses: 3,
+        maxScissorsUses: 1,
       ),
     );
   }
@@ -806,7 +826,8 @@ class _CampaignScreenState extends State<CampaignScreen> {
                           '${min(progress.unlockedLevel - 1, 30)}/30\n'
                           'Estrelas: ${progress.totalStars}/90\n'
                           'Moedas: ${wallet.coins}  ·  '
-                          'Martelos: ${wallet.hammers}',
+                          'Martelos: ${wallet.hammers}  ·  '
+                          'Tesouras: ${wallet.scissors}',
                           style: const TextStyle(
                             color: Color(0xFFD5FFF2),
                             height: 1.4,
@@ -977,6 +998,17 @@ class HowToPlaySheet extends StatelessWidget {
                         'tabuleiro. Ao reiniciar a fase, os usos permitidos '
                         'voltam, mas os martelos gastos não. Toque em '
                         'Cancelar para desistir sem gastar.',
+                  ),
+                  _RuleCard(
+                    icon: Icons.content_cut_rounded,
+                    accent: Color(0xFF42A5F5),
+                    title: 'Tesoura',
+                    text:
+                        'Na campanha, a tesoura remove toda a linha e '
+                        'toda a coluna da célula escolhida. Ela não gera '
+                        'pontos, não conta como jogada e não cria peças '
+                        'novas. Cada fase pode ter um limite de usos. '
+                        'Toque em Cancelar para desistir sem gastar.',
                   ),
                   _RuleCard(
                     icon: Icons.monetization_on_outlined,
@@ -1555,16 +1587,18 @@ class _GameScreenState extends State<GameScreen> {
   int _campaignMoves = 0;
   int _campaignStars = 0;
 
-  // Carteira (moedas e martelos) e recompensa da última vitória.
+  // Carteira (moedas e itens) e recompensa da última vitória.
   final PlayerWallet wallet = PlayerWallet();
   int _rewardCoins = 0;
   int _rewardHammers = 0;
 
   int get _hammers => wallet.hammers;
   bool _hammerActive = false;
+  bool _scissorsActive = false;
 
-  // Quantas vezes o martelo já foi usado nesta partida da fase.
+  // Quantas vezes cada item já foi usado nesta partida da fase.
   int _hammerUsesThisRun = 0;
+  int _scissorsUsesThisRun = 0;
 
   int get _hammerUsesLeft {
     final CampaignLevel? level = campaignLevel;
@@ -1572,6 +1606,21 @@ class _GameScreenState extends State<GameScreen> {
     if (level == null) return 0;
 
     return max(0, level.maxHammerUses - _hammerUsesThisRun);
+  }
+
+  int get _scissors {
+    return wallet.scissors;
+  }
+
+  int get _scissorsUsesLeft {
+    final CampaignLevel? level = campaignLevel;
+
+    if (level == null) return 0;
+
+    return max(
+      0,
+      level.maxScissorsUses - _scissorsUsesThisRun,
+    );
   }
 
   final Random random = Random();
@@ -1661,6 +1710,8 @@ class _GameScreenState extends State<GameScreen> {
     _rewardHammers = 0;
     _hammerActive = false;
     _hammerUsesThisRun = 0;
+    _scissorsActive = false;
+    _scissorsUsesThisRun = 0;
 
     _recordAtStart = bestScore;
 
@@ -1758,6 +1809,18 @@ class _GameScreenState extends State<GameScreen> {
       operation: operations[random.nextInt(operations.length)],
       event: TileEvent.spawned,
     );
+  }
+
+  // Segurança: se um item deixar o tabuleiro totalmente vazio,
+  // nasce uma peça para o jogo não travar.
+  void _ensureBoardNotEmpty() {
+    for (final row in board) {
+      for (final cell in row) {
+        if (cell != null) return;
+      }
+    }
+
+    _addRandomTile();
   }
 
   CellData _calculateCollision(CellData a, CellData b) {
@@ -1918,7 +1981,12 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _handleSwipe(double dx, double dy) {
-    if (_gameOver || _campaignWon || _hammerActive) return;
+    if (_gameOver ||
+        _campaignWon ||
+        _hammerActive ||
+        _scissorsActive) {
+      return;
+    }
 
     const double minimumDistance = 30;
     String? direction;
@@ -1973,7 +2041,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   // -------------------------------------------------------------------------
-  // MARTELO E LOJA
+  // MARTELO, TESOURA E LOJA
   // -------------------------------------------------------------------------
 
   Future<void> _openHammerShop() async {
@@ -2000,6 +2068,10 @@ class _GameScreenState extends State<GameScreen> {
 
     setState(() {
       _hammerActive = !_hammerActive;
+
+      if (_hammerActive) {
+        _scissorsActive = false;
+      }
     });
   }
 
@@ -2037,6 +2109,73 @@ class _GameScreenState extends State<GameScreen> {
       wallet.hammers--;
       _hammerUsesThisRun++;
       _hammerActive = false;
+
+      _ensureBoardNotEmpty();
+    });
+
+    await wallet.save();
+  }
+
+  void _toggleScissors() {
+    if (!isCampaign || _gameOver || _campaignWon) return;
+
+    if (!_scissorsActive && _scissorsUsesLeft <= 0) return;
+
+    if (!_scissorsActive && _scissors <= 0) return;
+
+    HapticFeedback.selectionClick();
+
+    setState(() {
+      _scissorsActive = !_scissorsActive;
+
+      if (_scissorsActive) {
+        _hammerActive = false;
+      }
+    });
+  }
+
+  Future<void> _useScissorsAt(
+    Offset local,
+    double boardSize,
+    double gap,
+  ) async {
+    if (!_scissorsActive || _scissors <= 0) return;
+    if (_scissorsUsesLeft <= 0) return;
+    if (_gameOver || _campaignWon) return;
+
+    const double pad = 10;
+
+    final double inner = boardSize - (pad * 2);
+    final double pitch = (inner + gap) / n;
+
+    final double x = local.dx - pad;
+    final double y = local.dy - pad;
+
+    if (x < 0 || y < 0 || x > inner || y > inner) return;
+
+    final int column = (x / pitch).floor();
+    final int row = (y / pitch).floor();
+
+    if (row < 0 || row >= n || column < 0 || column >= n) {
+      return;
+    }
+
+    HapticFeedback.heavyImpact();
+
+    setState(() {
+      for (int c = 0; c < n; c++) {
+        board[row][c] = null;
+      }
+
+      for (int r = 0; r < n; r++) {
+        board[r][column] = null;
+      }
+
+      wallet.scissors--;
+      _scissorsUsesThisRun++;
+      _scissorsActive = false;
+
+      _ensureBoardNotEmpty();
     });
 
     await wallet.save();
@@ -2430,8 +2569,59 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+  Widget _buildScissorsButton() {
+    final bool available = campaignLevel != null &&
+        campaignLevel!.maxScissorsUses > 0;
+
+    final bool canUse = available &&
+        !_gameOver &&
+        !_campaignWon &&
+        (_scissorsActive || _scissorsUsesLeft > 0) &&
+        (_scissors > 0 || _scissorsActive);
+
+    return ElevatedButton.icon(
+      onPressed: canUse ? _toggleScissors : null,
+      icon: Icon(
+        _scissorsActive
+            ? Icons.close
+            : Icons.content_cut_rounded,
+      ),
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          _scissorsActive
+              ? 'Cancelar'
+              : 'Tesoura ($_scissors)',
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor:
+            _scissorsActive ? kScissorsColor : kCardColor,
+        foregroundColor:
+            _scissorsActive ? Colors.white : kScissorsColor,
+        disabledBackgroundColor: kCardColor,
+        disabledForegroundColor: const Color(0xFF66666D),
+        side: BorderSide(
+          color: canUse ? kScissorsColor : const Color(0xFF66666D),
+          width: 1.5,
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 12,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
+
   // Texto abaixo do tabuleiro (apenas na campanha).
-  Widget _buildHammerStatusText() {
+  Widget _buildCampaignItemStatus() {
     final CampaignLevel level = campaignLevel!;
 
     if (_hammerActive) {
@@ -2442,6 +2632,35 @@ class _GameScreenState extends State<GameScreen> {
             color: kHammerColor,
             fontWeight: FontWeight.bold,
             fontSize: 14,
+          ),
+        ),
+      );
+    }
+
+    if (_scissorsActive) {
+      return const Center(
+        child: Text(
+          'Toque em uma célula para cortar a linha e a coluna',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: kScissorsColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
+      );
+    }
+
+    if (level.maxScissorsUses > 0) {
+      return Center(
+        child: Text(
+          'Martelo: $_hammerUsesLeft de ${level.maxHammerUses}  ·  '
+          'Tesoura: $_scissorsUsesLeft de ${level.maxScissorsUses}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFF9A9AA2),
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
           ),
         ),
       );
@@ -2471,13 +2690,31 @@ class _GameScreenState extends State<GameScreen> {
       return _buildRestartButton();
     }
 
+    final bool scissorsAvailable =
+        campaignLevel!.maxScissorsUses > 0;
+
+    if (!scissorsAvailable) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          children: [
+            Expanded(child: _buildRestartButton()),
+            const SizedBox(width: 12),
+            Expanded(child: _buildHammerButton()),
+          ],
+        ),
+      );
+    }
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
           Expanded(child: _buildRestartButton()),
-          const SizedBox(width: 12),
+          const SizedBox(width: 7),
           Expanded(child: _buildHammerButton()),
+          const SizedBox(width: 7),
+          Expanded(child: _buildScissorsButton()),
         ],
       ),
     );
@@ -2492,7 +2729,7 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-    // Cores dos círculos de operação (únicas, nunca usadas nas peças).
+  // Cores dos círculos de operação (únicas, nunca usadas nas peças).
   static const Color _opPlusColor = Color(0xFF1E5BFF); // azul
   static const Color _opTimesColor = Color(0xFFE0103A); // vermelho
   static const Color _opRootColor = Color(0xFF8E24AA); // roxo
@@ -2890,6 +3127,19 @@ class _GameScreenState extends State<GameScreen> {
                                 return;
                               }
 
+                              // Com a tesoura ativa, um toque escolhe
+                              // a linha e a coluna.
+                              if (_scissorsActive) {
+                                if (distance.distance < 15) {
+                                  _useScissorsAt(
+                                    event.localPosition,
+                                    boardSize,
+                                    gap,
+                                  );
+                                }
+                                return;
+                              }
+
                               _handleSwipe(
                                 distance.dx,
                                 distance.dy,
@@ -2910,7 +3160,9 @@ class _GameScreenState extends State<GameScreen> {
                                 border: Border.all(
                                   color: _hammerActive
                                       ? kHammerColor
-                                      : Colors.transparent,
+                                      : _scissorsActive
+                                          ? kScissorsColor
+                                          : Colors.transparent,
                                   width: 3,
                                 ),
                                 boxShadow: const [
@@ -2947,7 +3199,7 @@ class _GameScreenState extends State<GameScreen> {
                           SizedBox(
                             height: isCampaign ? 30 : 16,
                             child: isCampaign
-                                ? _buildHammerStatusText()
+                                ? _buildCampaignItemStatus()
                                 : null,
                           ),
                           Row(
