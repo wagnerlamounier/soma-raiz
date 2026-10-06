@@ -41,6 +41,7 @@ const Color kBoardColor = Color(0xFF29292E);
 const Color kEmptyCellColor = Color(0xFF323238);
 const Color kHammerColor = Color(0xFFF59E0B);
 const Color kScissorsColor = Color(0xFF42A5F5);
+const Color kLightningColor = Color(0xFFFFEE58);
 const Color kCoinColor = Color(0xFFFFC107);
 
 // ---------------------------------------------------------------------------
@@ -51,12 +52,16 @@ const Color kCoinColor = Color(0xFFFFC107);
 const String kHammerStorageKey = 'item_hammer_count';
 const String kCoinStorageKey = 'player_coins';
 const String kScissorsStorageKey = 'item_scissors_count';
+const String kLightningStorageKey = 'item_lightning_count';
 
 // Quantidade inicial de martelos (valor de teste).
 const int kInitialHammers = 5;
 
 // Quantidade inicial de tesouras (valor de teste).
 const int kInitialScissors = 5;
+
+// Quantidade inicial de raios (valor de teste).
+const int kInitialLightning = 5;
 
 // Preço de um martelo na loja.
 const int kHammerPrice = 40;
@@ -71,6 +76,7 @@ class PlayerWallet {
   int coins = 0;
   int hammers = kInitialHammers;
   int scissors = kInitialScissors;
+  int lightning = kInitialLightning;
 
   Future<void> load() async {
     try {
@@ -80,6 +86,8 @@ class PlayerWallet {
       hammers = prefs.getInt(kHammerStorageKey) ?? kInitialHammers;
       scissors =
           prefs.getInt(kScissorsStorageKey) ?? kInitialScissors;
+      lightning =
+          prefs.getInt(kLightningStorageKey) ?? kInitialLightning;
     } catch (e) {
       debugPrint('Erro ao carregar carteira: $e');
     }
@@ -89,16 +97,15 @@ class PlayerWallet {
     final int savedCoins = coins;
     final int savedHammers = hammers;
     final int savedScissors = scissors;
+    final int savedLightning = lightning;
 
     try {
       final prefs = await SharedPreferences.getInstance();
 
       await prefs.setInt(kCoinStorageKey, savedCoins);
       await prefs.setInt(kHammerStorageKey, savedHammers);
-      await prefs.setInt(
-        kScissorsStorageKey,
-        savedScissors,
-      );
+      await prefs.setInt(kScissorsStorageKey, savedScissors);
+      await prefs.setInt(kLightningStorageKey, savedLightning);
     } catch (e) {
       debugPrint('Erro ao salvar carteira: $e');
     }
@@ -211,6 +218,9 @@ class CampaignLevel {
   // Quantas vezes a tesoura pode ser usada nesta fase.
   final int maxScissorsUses;
 
+  // Quantas vezes o raio pode ser usado nesta fase.
+  final int maxLightningUses;
+
   const CampaignLevel({
     required this.number,
     required this.world,
@@ -224,6 +234,7 @@ class CampaignLevel {
     required this.allowMultiplesOfThree,
     this.maxHammerUses = 2,
     this.maxScissorsUses = 0,
+    this.maxLightningUses = 0,
   });
 
   String get worldName {
@@ -282,6 +293,7 @@ List<CampaignLevel> _createCampaignLevels() {
         allowMultiplesOfThree: false,
         maxHammerUses: 1,
         maxScissorsUses: 0,
+        maxLightningUses: 0,
       ),
     );
   }
@@ -305,6 +317,7 @@ List<CampaignLevel> _createCampaignLevels() {
         allowMultiplesOfThree: false,
         maxHammerUses: 2,
         maxScissorsUses: 0,
+        maxLightningUses: 0,
       ),
     );
   }
@@ -332,6 +345,7 @@ List<CampaignLevel> _createCampaignLevels() {
         allowMultiplesOfThree: i >= 25,
         maxHammerUses: 3,
         maxScissorsUses: 1,
+        maxLightningUses: 1,
       ),
     );
   }
@@ -825,9 +839,10 @@ class _CampaignScreenState extends State<CampaignScreen> {
                           'Fases concluídas: '
                           '${min(progress.unlockedLevel - 1, 30)}/30\n'
                           'Estrelas: ${progress.totalStars}/90\n'
-                          'Moedas: ${wallet.coins}  ·  '
+                          'Moedas: ${wallet.coins}\n'
                           'Martelos: ${wallet.hammers}  ·  '
-                          'Tesouras: ${wallet.scissors}',
+                          'Tesouras: ${wallet.scissors}  ·  '
+                          'Raios: ${wallet.lightning}',
                           style: const TextStyle(
                             color: Color(0xFFD5FFF2),
                             height: 1.4,
@@ -981,9 +996,8 @@ class HowToPlaySheet extends StatelessWidget {
                     text:
                         'Quando uma fusão produz resultado acima de 99, o '
                         'valor pode sofrer um colapso e virar sua raiz '
-                        'quadrada arredondada. Essas peças ganham borda '
-                        'dourada e um círculo roxo com √ no canto '
-                        'superior esquerdo.',
+                        'quadrada arredondada. Essas peças ganham um '
+                        'círculo roxo com √ no canto superior esquerdo.',
                     example: '64 + 64 = 128 → √128 ≈ 11',
                   ),
                   _RuleCard(
@@ -1006,6 +1020,18 @@ class HowToPlaySheet extends StatelessWidget {
                     text:
                         'Na campanha, a tesoura remove toda a linha e '
                         'toda a coluna da célula escolhida. Ela não gera '
+                        'pontos, não conta como jogada e não cria peças '
+                        'novas. Cada fase pode ter um limite de usos. '
+                        'Toque em Cancelar para desistir sem gastar.',
+                  ),
+                  _RuleCard(
+                    icon: Icons.bolt,
+                    accent: Color(0xFFFFEE58),
+                    title: 'Raio',
+                    text:
+                        'Na campanha, toque no botão Raio e depois em uma '
+                        'peça: todas as peças do tabuleiro com o mesmo '
+                        'valor dela são eliminadas. O raio não gera '
                         'pontos, não conta como jogada e não cria peças '
                         'novas. Cada fase pode ter um limite de usos. '
                         'Toque em Cancelar para desistir sem gastar.',
@@ -1595,10 +1621,12 @@ class _GameScreenState extends State<GameScreen> {
   int get _hammers => wallet.hammers;
   bool _hammerActive = false;
   bool _scissorsActive = false;
+  bool _lightningActive = false;
 
   // Quantas vezes cada item já foi usado nesta partida da fase.
   int _hammerUsesThisRun = 0;
   int _scissorsUsesThisRun = 0;
+  int _lightningUsesThisRun = 0;
 
   int get _hammerUsesLeft {
     final CampaignLevel? level = campaignLevel;
@@ -1620,6 +1648,21 @@ class _GameScreenState extends State<GameScreen> {
     return max(
       0,
       level.maxScissorsUses - _scissorsUsesThisRun,
+    );
+  }
+
+  int get _lightning {
+    return wallet.lightning;
+  }
+
+  int get _lightningUsesLeft {
+    final CampaignLevel? level = campaignLevel;
+
+    if (level == null) return 0;
+
+    return max(
+      0,
+      level.maxLightningUses - _lightningUsesThisRun,
     );
   }
 
@@ -1712,6 +1755,8 @@ class _GameScreenState extends State<GameScreen> {
     _hammerUsesThisRun = 0;
     _scissorsActive = false;
     _scissorsUsesThisRun = 0;
+    _lightningActive = false;
+    _lightningUsesThisRun = 0;
 
     _recordAtStart = bestScore;
 
@@ -1984,7 +2029,8 @@ class _GameScreenState extends State<GameScreen> {
     if (_gameOver ||
         _campaignWon ||
         _hammerActive ||
-        _scissorsActive) {
+        _scissorsActive ||
+        _lightningActive) {
       return;
     }
 
@@ -2041,8 +2087,34 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   // -------------------------------------------------------------------------
-  // MARTELO, TESOURA E LOJA
+  // MARTELO, TESOURA, RAIO E LOJA
   // -------------------------------------------------------------------------
+
+  // Converte um toque no tabuleiro em (linha, coluna).
+  // Retorna null se o toque foi fora das células.
+  Point<int>? _cellFromTouch(
+    Offset local,
+    double boardSize,
+    double gap,
+  ) {
+    // O tabuleiro tem 10 de espaço interno (3 de borda + 7 de padding).
+    const double pad = 10;
+
+    final double inner = boardSize - (pad * 2);
+    final double pitch = (inner + gap) / n;
+
+    final double x = local.dx - pad;
+    final double y = local.dy - pad;
+
+    if (x < 0 || y < 0 || x > inner || y > inner) return null;
+
+    final int column = (x / pitch).floor();
+    final int row = (y / pitch).floor();
+
+    if (row < 0 || row >= n || column < 0 || column >= n) return null;
+
+    return Point<int>(row, column);
+  }
 
   Future<void> _openHammerShop() async {
     final bool bought = await showHammerShop(context, wallet);
@@ -2071,6 +2143,7 @@ class _GameScreenState extends State<GameScreen> {
 
       if (_hammerActive) {
         _scissorsActive = false;
+        _lightningActive = false;
       }
     });
   }
@@ -2084,21 +2157,12 @@ class _GameScreenState extends State<GameScreen> {
     if (_hammerUsesLeft <= 0) return;
     if (_gameOver || _campaignWon) return;
 
-    // O tabuleiro tem 10 de espaço interno (3 de borda + 7 de padding).
-    const double pad = 10;
+    final Point<int>? target = _cellFromTouch(local, boardSize, gap);
 
-    final double inner = boardSize - (pad * 2);
-    final double pitch = (inner + gap) / n;
+    if (target == null) return;
 
-    final double x = local.dx - pad;
-    final double y = local.dy - pad;
-
-    if (x < 0 || y < 0 || x > inner || y > inner) return;
-
-    final int column = (x / pitch).floor();
-    final int row = (y / pitch).floor();
-
-    if (row < 0 || row >= n || column < 0 || column >= n) return;
+    final int row = target.x;
+    final int column = target.y;
 
     if (board[row][column] == null) return;
 
@@ -2130,6 +2194,7 @@ class _GameScreenState extends State<GameScreen> {
 
       if (_scissorsActive) {
         _hammerActive = false;
+        _lightningActive = false;
       }
     });
   }
@@ -2143,22 +2208,12 @@ class _GameScreenState extends State<GameScreen> {
     if (_scissorsUsesLeft <= 0) return;
     if (_gameOver || _campaignWon) return;
 
-    const double pad = 10;
+    final Point<int>? target = _cellFromTouch(local, boardSize, gap);
 
-    final double inner = boardSize - (pad * 2);
-    final double pitch = (inner + gap) / n;
+    if (target == null) return;
 
-    final double x = local.dx - pad;
-    final double y = local.dy - pad;
-
-    if (x < 0 || y < 0 || x > inner || y > inner) return;
-
-    final int column = (x / pitch).floor();
-    final int row = (y / pitch).floor();
-
-    if (row < 0 || row >= n || column < 0 || column >= n) {
-      return;
-    }
+    final int row = target.x;
+    final int column = target.y;
 
     HapticFeedback.heavyImpact();
 
@@ -2174,6 +2229,66 @@ class _GameScreenState extends State<GameScreen> {
       wallet.scissors--;
       _scissorsUsesThisRun++;
       _scissorsActive = false;
+
+      _ensureBoardNotEmpty();
+    });
+
+    await wallet.save();
+  }
+
+  void _toggleLightning() {
+    if (!isCampaign || _gameOver || _campaignWon) return;
+
+    if (!_lightningActive && _lightningUsesLeft <= 0) return;
+
+    if (!_lightningActive && _lightning <= 0) return;
+
+    HapticFeedback.selectionClick();
+
+    setState(() {
+      _lightningActive = !_lightningActive;
+
+      if (_lightningActive) {
+        _hammerActive = false;
+        _scissorsActive = false;
+      }
+    });
+  }
+
+  Future<void> _useLightningAt(
+    Offset local,
+    double boardSize,
+    double gap,
+  ) async {
+    if (!_lightningActive || _lightning <= 0) return;
+    if (_lightningUsesLeft <= 0) return;
+    if (_gameOver || _campaignWon) return;
+
+    final Point<int>? target = _cellFromTouch(local, boardSize, gap);
+
+    if (target == null) return;
+
+    final CellData? chosen = board[target.x][target.y];
+
+    // O raio precisa de uma peça para saber qual valor eliminar.
+    if (chosen == null) return;
+
+    final int chosenValue = chosen.value;
+
+    HapticFeedback.heavyImpact();
+
+    setState(() {
+      for (int r = 0; r < n; r++) {
+        for (int c = 0; c < n; c++) {
+          if (board[r][c]?.value == chosenValue) {
+            board[r][c] = null;
+          }
+        }
+      }
+
+      wallet.lightning--;
+      _lightningUsesThisRun++;
+      _lightningActive = false;
 
       _ensureBoardNotEmpty();
     });
@@ -2582,27 +2697,21 @@ class _GameScreenState extends State<GameScreen> {
     return ElevatedButton.icon(
       onPressed: canUse ? _toggleScissors : null,
       icon: Icon(
-        _scissorsActive
-            ? Icons.close
-            : Icons.content_cut_rounded,
+        _scissorsActive ? Icons.close : Icons.content_cut_rounded,
       ),
       label: FittedBox(
         fit: BoxFit.scaleDown,
         child: Text(
-          _scissorsActive
-              ? 'Cancelar'
-              : 'Tesoura ($_scissors)',
+          _scissorsActive ? 'Cancelar' : 'Tesoura ($_scissors)',
           style: const TextStyle(
-            fontSize: 15,
+            fontSize: 16,
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
       style: ElevatedButton.styleFrom(
-        backgroundColor:
-            _scissorsActive ? kScissorsColor : kCardColor,
-        foregroundColor:
-            _scissorsActive ? Colors.white : kScissorsColor,
+        backgroundColor: _scissorsActive ? kScissorsColor : kCardColor,
+        foregroundColor: _scissorsActive ? Colors.white : kScissorsColor,
         disabledBackgroundColor: kCardColor,
         disabledForegroundColor: const Color(0xFF66666D),
         side: BorderSide(
@@ -2610,7 +2719,50 @@ class _GameScreenState extends State<GameScreen> {
           width: 1.5,
         ),
         padding: const EdgeInsets.symmetric(
-          horizontal: 10,
+          horizontal: 16,
+          vertical: 12,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLightningButton() {
+    final bool available = campaignLevel != null &&
+        campaignLevel!.maxLightningUses > 0;
+
+    final bool canUse = available &&
+        !_gameOver &&
+        !_campaignWon &&
+        (_lightningActive || _lightningUsesLeft > 0) &&
+        (_lightning > 0 || _lightningActive);
+
+    return ElevatedButton.icon(
+      onPressed: canUse ? _toggleLightning : null,
+      icon: Icon(_lightningActive ? Icons.close : Icons.bolt),
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          _lightningActive ? 'Cancelar' : 'Raio ($_lightning)',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _lightningActive ? kLightningColor : kCardColor,
+        foregroundColor: _lightningActive ? Colors.black : kLightningColor,
+        disabledBackgroundColor: kCardColor,
+        disabledForegroundColor: const Color(0xFF66666D),
+        side: BorderSide(
+          color: canUse ? kLightningColor : const Color(0xFF66666D),
+          width: 1.5,
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
           vertical: 12,
         ),
         shape: RoundedRectangleBorder(
@@ -2639,28 +2791,66 @@ class _GameScreenState extends State<GameScreen> {
 
     if (_scissorsActive) {
       return const Center(
-        child: Text(
-          'Toque em uma célula para cortar a linha e a coluna',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: kScissorsColor,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            'Toque em uma célula para cortar a linha e a coluna',
+            style: TextStyle(
+              color: kScissorsColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
           ),
         ),
       );
     }
 
-    if (level.maxScissorsUses > 0) {
+    if (_lightningActive) {
+      return const Center(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            'Toque em uma peça: todas com o mesmo valor somem',
+            style: TextStyle(
+              color: kLightningColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final bool hasExtras =
+        level.maxScissorsUses > 0 || level.maxLightningUses > 0;
+
+    if (hasExtras) {
+      final List<String> parts = [
+        'Martelo: $_hammerUsesLeft/${level.maxHammerUses}',
+      ];
+
+      if (level.maxScissorsUses > 0) {
+        parts.add(
+          'Tesoura: $_scissorsUsesLeft/${level.maxScissorsUses}',
+        );
+      }
+
+      if (level.maxLightningUses > 0) {
+        parts.add(
+          'Raio: $_lightningUsesLeft/${level.maxLightningUses}',
+        );
+      }
+
       return Center(
-        child: Text(
-          'Martelo: $_hammerUsesLeft de ${level.maxHammerUses}  ·  '
-          'Tesoura: $_scissorsUsesLeft de ${level.maxScissorsUses}',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Color(0xFF9A9AA2),
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            'Usos nesta fase  ·  ${parts.join('  ·  ')}',
+            style: const TextStyle(
+              color: Color(0xFF9A9AA2),
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
           ),
         ),
       );
@@ -2690,33 +2880,41 @@ class _GameScreenState extends State<GameScreen> {
       return _buildRestartButton();
     }
 
-    final bool scissorsAvailable =
-        campaignLevel!.maxScissorsUses > 0;
+    final CampaignLevel level = campaignLevel!;
+    final bool hasScissors = level.maxScissorsUses > 0;
+    final bool hasLightning = level.maxLightningUses > 0;
 
-    if (!scissorsAvailable) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Row(
-          children: [
-            Expanded(child: _buildRestartButton()),
-            const SizedBox(width: 12),
-            Expanded(child: _buildHammerButton()),
-          ],
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+    final Widget firstRow = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
           Expanded(child: _buildRestartButton()),
-          const SizedBox(width: 7),
+          const SizedBox(width: 12),
           Expanded(child: _buildHammerButton()),
-          const SizedBox(width: 7),
-          Expanded(child: _buildScissorsButton()),
         ],
       ),
+    );
+
+    if (!hasScissors && !hasLightning) {
+      return firstRow;
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        firstRow,
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              if (hasScissors) Expanded(child: _buildScissorsButton()),
+              if (hasScissors && hasLightning) const SizedBox(width: 12),
+              if (hasLightning) Expanded(child: _buildLightningButton()),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -2807,13 +3005,6 @@ class _GameScreenState extends State<GameScreen> {
               end: Alignment.bottomRight,
               colors: [light, base, dark],
             ),
-            // Peça colapsada por raiz ganha borda dourada.
-            border: cell.showRoot
-                ? Border.all(
-                    color: const Color(0xFFFFC107),
-                    width: max(2.5, size * 0.05),
-                  )
-                : null,
             boxShadow: [
               BoxShadow(
                 color: bottomEdge,
@@ -2916,8 +3107,8 @@ class _GameScreenState extends State<GameScreen> {
                   top: size * 0.05,
                   left: size * 0.05,
                   child: Container(
-                    width: badge * 0.9,
-                    height: badge * 0.9,
+                    width: badge,
+                    height: badge,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: _opRootColor,
@@ -2926,12 +3117,19 @@ class _GameScreenState extends State<GameScreen> {
                         color: Colors.white,
                         width: max(1.5, size * 0.025),
                       ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color.fromRGBO(0, 0, 0, 0.4),
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
                     ),
                     child: Text(
                       '√',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: badge * 0.62,
+                        fontSize: badge * 0.75,
                         fontWeight: FontWeight.w900,
                         height: 1,
                       ),
@@ -3012,6 +3210,10 @@ class _GameScreenState extends State<GameScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool extraItemsRow = isCampaign &&
+        (campaignLevel!.maxScissorsUses > 0 ||
+            campaignLevel!.maxLightningUses > 0);
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -3049,7 +3251,9 @@ class _GameScreenState extends State<GameScreen> {
           body: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final double reservedHeight = isCampaign ? 400 : 330;
+                final double reservedHeight = isCampaign
+                    ? (extraItemsRow ? 456 : 400)
+                    : 330;
 
                 final double boardSize = max(
                   200,
@@ -3140,6 +3344,19 @@ class _GameScreenState extends State<GameScreen> {
                                 return;
                               }
 
+                              // Com o raio ativo, um toque escolhe o valor
+                              // que será eliminado.
+                              if (_lightningActive) {
+                                if (distance.distance < 15) {
+                                  _useLightningAt(
+                                    event.localPosition,
+                                    boardSize,
+                                    gap,
+                                  );
+                                }
+                                return;
+                              }
+
                               _handleSwipe(
                                 distance.dx,
                                 distance.dy,
@@ -3162,7 +3379,9 @@ class _GameScreenState extends State<GameScreen> {
                                       ? kHammerColor
                                       : _scissorsActive
                                           ? kScissorsColor
-                                          : Colors.transparent,
+                                          : _lightningActive
+                                              ? kLightningColor
+                                              : Colors.transparent,
                                   width: 3,
                                 ),
                                 boxShadow: const [
