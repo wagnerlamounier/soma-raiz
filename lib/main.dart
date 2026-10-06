@@ -945,11 +945,13 @@ class HowToPlaySheet extends StatelessWidget {
                     accent: Color(0xFF2E7D32),
                     title: 'Operações',
                     text:
-                        'O símbolo repetido ao redor da borda de cada peça '
-                        'mostra a operação dela: + para soma e × para '
-                        'multiplicação. O resultado usa a operação da peça '
-                        'que está na frente no sentido do movimento. Peças '
-                        'com o mesmo número têm a mesma cor.',
+                                            text:
+                        'O círculo no canto superior direito de cada peça '
+                        'mostra a operação dela: azul com + para soma e '
+                        'vermelho com × para multiplicação. O resultado '
+                        'usa a operação da peça que está na frente no '
+                        'sentido do movimento. Peças com o mesmo número '
+                        'têm a mesma cor.',
                     example: '4 + 4 = 8       3 × 3 = 9',
                   ),
                   _RuleCard(
@@ -957,10 +959,12 @@ class HowToPlaySheet extends StatelessWidget {
                     accent: Color(0xFF1565C0),
                     title: 'Raiz Quadrada',
                     text:
+                                            text:
                         'Quando uma fusão produz resultado acima de 99, o '
                         'valor pode sofrer um colapso e virar sua raiz '
                         'quadrada arredondada. Essas peças ganham borda '
-                        'dourada e o símbolo √ no canto.',
+                        'dourada e um círculo roxo com √ no canto '
+                        'superior esquerdo.',
                     example: '64 + 64 = 128 → √128 ≈ 11',
                   ),
                   _RuleCard(
@@ -2490,73 +2494,65 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
+    // Cores dos círculos de operação (únicas, nunca usadas nas peças).
+  static const Color _opPlusColor = Color(0xFF1E5BFF); // azul
+  static const Color _opTimesColor = Color(0xFFE0103A); // vermelho
+  static const Color _opRootColor = Color(0xFF8E24AA); // roxo
+
+  // As peças usam só verdes, azul-petróleo, laranjas, dourados,
+  // marrons e cinzas, evitando azul, vermelho e roxo (cores dos círculos).
   Color _colorForValue(int value) {
-    // Cada valor tem sempre a mesma cor, independente da operação.
     const Map<int, Color> valueColors = {
-      2: Color.fromRGBO(66, 135, 245, 0.84),
-      3: Color.fromRGBO(0, 179, 126, 0.84),
-      4: Color.fromRGBO(132, 94, 247, 0.84),
-      5: Color.fromRGBO(214, 93, 160, 0.84),
-      6: Color.fromRGBO(230, 76, 60, 0.84),
-      8: Color.fromRGBO(245, 166, 35, 0.84),
-      9: Color.fromRGBO(20, 184, 166, 0.84),
-      11: Color.fromRGBO(239, 108, 0, 0.84),
-      12: Color.fromRGBO(67, 160, 71, 0.84),
-      16: Color.fromRGBO(156, 39, 176, 0.84),
-      18: Color.fromRGBO(3, 155, 229, 0.84),
-      24: Color.fromRGBO(198, 40, 40, 0.84),
-      25: Color.fromRGBO(121, 85, 72, 0.84),
-      32: Color.fromRGBO(63, 81, 181, 0.84),
-      36: Color.fromRGBO(0, 137, 123, 0.84),
-      48: Color.fromRGBO(173, 20, 87, 0.84),
-      64: Color.fromRGBO(230, 81, 0, 0.84),
-      81: Color.fromRGBO(46, 125, 50, 0.84),
-      128: Color.fromRGBO(81, 45, 168, 0.84),
-      256: Color.fromRGBO(0, 96, 100, 0.84),
-      512: Color.fromRGBO(183, 28, 28, 0.84),
+      2: Color(0xFF2E9E57),
+      3: Color(0xFFE67E22),
+      4: Color(0xFF12A58B),
+      5: Color(0xFFB7791F),
+      6: Color(0xFF8D6E4F),
+      8: Color(0xFF8A9A1A),
+      9: Color(0xFF1F6B4A),
+      11: Color(0xFF5F7A85),
+      12: Color(0xFFC9A400),
+      16: Color(0xFF00838F),
+      18: Color(0xFF689F38),
+      24: Color(0xFF6D4C41),
+      25: Color(0xFF455A64),
+      32: Color(0xFF00695C),
+      36: Color(0xFF33691E),
+      48: Color(0xFFBF6F00),
+      64: Color(0xFFD9822B),
+      81: Color(0xFF1B5E20),
+      128: Color(0xFF827717),
+      256: Color(0xFF5D4037),
+      512: Color(0xFF546E7A),
     };
 
-    final Color? knownColor = valueColors[value];
+    final Color? known = valueColors[value];
 
-    if (knownColor != null) {
-      return knownColor;
-    }
+    if (known != null) return known;
 
-    // Para valores que ainda não estão na tabela, produz uma cor
-    // baseada no próprio número.
-    final double hue = (value * 47.0) % 360;
+    // Valores fora da tabela: matiz entre 20 e 169 (sem azul/vermelho/roxo).
+    final double hue = 20.0 + ((value * 37) % 150);
 
-    return HSVColor.fromAHSV(
-      0.84,
-      hue,
-      0.68,
-      0.86,
-    ).toColor();
+    return HSLColor.fromAHSL(1, hue, 0.60, 0.36).toColor();
   }
 
-  // Peça no estilo "moldura com símbolos": a operação se repete ao redor
-  // da borda e o número fica num quadrado central.
+  Color _shade(Color color, double delta) {
+    final HSLColor hsl = HSLColor.fromColor(color);
+
+    return hsl
+        .withLightness((hsl.lightness + delta).clamp(0.0, 1.0).toDouble())
+        .toColor();
+  }
+
   Widget _buildTileBody(CellData cell) {
-    final Color tileColor = _colorForValue(cell.value);
-    final Color solid = tileColor.withAlpha(255);
+    final Color base = _colorForValue(cell.value);
+    final Color light = _shade(base, 0.10);
+    final Color dark = _shade(base, -0.10);
+    final Color bottomEdge = _shade(base, -0.22);
 
-    // Moldura escura, com o tom da cor do número.
-    final Color frameColor = Color.alphaBlend(
-      Colors.black.withAlpha(120),
-      solid,
-    );
-
-    // Símbolos mais claros que a cor da peça.
-    final Color symbolColor = Color.alphaBlend(
-      Colors.white.withAlpha(110),
-      solid,
-    );
-
-    final Color borderColor = cell.showRoot
-        ? const Color.fromRGBO(255, 193, 7, 0.95)
-        : solid;
-
-    final String symbol = cell.operation == 'x' ? '×' : '+';
+    final bool isTimes = cell.operation == 'x';
+    final Color opColor = isTimes ? _opTimesColor : _opPlusColor;
+    final String opSymbol = isTimes ? '×' : '+';
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -2565,130 +2561,148 @@ class _GameScreenState extends State<GameScreen> {
           constraints.maxHeight,
         );
 
-        final double band = size * 0.2;
-        final double edge = size * 0.035;
-        final double symbolSize = max(9.0, size * 0.15);
-
-        final TextStyle symbolStyle = TextStyle(
-          color: symbolColor,
-          fontSize: symbolSize,
-          fontWeight: FontWeight.w900,
-          height: 1,
-        );
-
-        Widget sym() => Text(symbol, style: symbolStyle);
+        final double radius = size * 0.2;
+        final double badge = size * 0.36;
 
         return Container(
           decoration: BoxDecoration(
-            color: frameColor,
-            borderRadius: BorderRadius.circular(size * 0.2),
-            border: Border.all(
-              color: borderColor,
-              width: cell.showRoot ? 3 : 2,
+            borderRadius: BorderRadius.circular(radius),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [light, base, dark],
             ),
+            // Peça colapsada por raiz ganha borda dourada.
+            border: cell.showRoot
+                ? Border.all(
+                    color: const Color(0xFFFFC107),
+                    width: max(2.5, size * 0.05),
+                  )
+                : null,
             boxShadow: [
               BoxShadow(
-                color: solid.withAlpha(110),
-                blurRadius: 6,
+                color: bottomEdge,
+                offset: Offset(0, size * 0.05),
+              ),
+              BoxShadow(
+                color: const Color.fromRGBO(0, 0, 0, 0.35),
+                offset: Offset(0, size * 0.08),
+                blurRadius: size * 0.10,
               ),
             ],
           ),
           child: Stack(
             children: [
-              // Símbolos: topo, base, esquerda e direita.
+              // Brilho no topo.
               Positioned(
-                top: edge,
-                left: band,
-                right: band,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [sym(), sym(), sym()],
-                ),
-              ),
-              Positioned(
-                bottom: edge,
-                left: band,
-                right: band,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [sym(), sym(), sym()],
-                ),
-              ),
-              Positioned(
-                left: edge,
-                top: band,
-                bottom: band,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [sym(), sym(), sym()],
-                ),
-              ),
-              Positioned(
-                right: edge,
-                top: band,
-                bottom: band,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [sym(), sym(), sym()],
-                ),
-              ),
-              // Quadrado central com o número.
-              Positioned.fill(
-                child: Padding(
-                  padding: EdgeInsets.all(band),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: tileColor,
-                      borderRadius: BorderRadius.circular(size * 0.12),
-                      border: Border.all(
-                        color: Colors.white.withAlpha(70),
-                        width: 1,
-                      ),
-                    ),
-                    child: Stack(
-                      children: [
-                        Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(size * 0.03),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '${cell.value}',
-                                style: TextStyle(
-                                  fontSize: size * 0.32,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  shadows: const [
-                                    Shadow(
-                                      color: Color.fromRGBO(0, 0, 0, 0.45),
-                                      blurRadius: 3,
-                                      offset: Offset(0, 1.5),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (cell.showRoot)
-                          Positioned(
-                            top: size * 0.01,
-                            left: size * 0.04,
-                            child: Text(
-                              '√',
-                              style: TextStyle(
-                                color: const Color(0xFFFFD54F),
-                                fontSize: max(10.0, size * 0.17),
-                                fontWeight: FontWeight.w900,
-                                height: 1,
-                              ),
-                            ),
-                          ),
+                left: size * 0.07,
+                right: size * 0.07,
+                top: size * 0.04,
+                height: size * 0.34,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(radius * 0.8),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withAlpha(90),
+                        Colors.white.withAlpha(0),
                       ],
                     ),
                   ),
                 ),
               ),
+              // Número central em branco.
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.all(size * 0.12),
+                  child: Align(
+                    alignment: const Alignment(0, 0.12),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        '${cell.value}',
+                        style: TextStyle(
+                          fontSize: size * 0.46,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          height: 1,
+                          shadows: const [
+                            Shadow(
+                              color: Color.fromRGBO(0, 0, 0, 0.45),
+                              blurRadius: 3,
+                              offset: Offset(0, 1.5),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Círculo da operação, canto superior direito.
+              Positioned(
+                top: size * 0.05,
+                right: size * 0.05,
+                child: Container(
+                  width: badge,
+                  height: badge,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: opColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white,
+                      width: max(1.5, size * 0.025),
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color.fromRGBO(0, 0, 0, 0.4),
+                        blurRadius: 3,
+                        offset: Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    opSymbol,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: badge * 0.75,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+              // Círculo da raiz, canto superior esquerdo (só se colapsada).
+              if (cell.showRoot)
+                Positioned(
+                  top: size * 0.05,
+                  left: size * 0.05,
+                  child: Container(
+                    width: badge * 0.9,
+                    height: badge * 0.9,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _opRootColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: max(1.5, size * 0.025),
+                      ),
+                    ),
+                    child: Text(
+                      '√',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: badge * 0.62,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
